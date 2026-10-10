@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>MEDscan</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0b7a7c"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="MEDscan">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+--bg:#f2f9f8;--card:#fff;--ink:#16323a;--mut:#56707a;--line:#d8e8e6;--acc:#0b7a7c;--accbg:#dff3f2;--warn:#92400e;--warnbg:#fef3c7;--bad:#b91c1c;--badbg:#fee2e2;--good:#15803d;--goodbg:#dcfce7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1320;--card:#171e30;--ink:#e8ecf6;--mut:#9aa5bf;--line:#2a3350;--acc:#8ea6ff;--accbg:#222c4d;--warn:#fcd34d;--warnbg:#3a2e0b;--bad:#fca5a5;--badbg:#401818;--good:#86efac;--goodbg:#12301c}}
+:root[data-theme="dark"]{--bg:#0e1320;--card:#171e30;--ink:#e8ecf6;--mut:#9aa5bf;--line:#2a3350;--acc:#8ea6ff;--accbg:#222c4d;--warn:#fcd34d;--warnbg:#3a2e0b;--bad:#fca5a5;--badbg:#401818;--good:#86efac;--goodbg:#12301c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:20px 16px 40px}
+h1{margin:0;font-size:26px}.sub{color:var(--mut);margin:2px 0 14px}
+.banner{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:14px}
+.tabs{display:flex;gap:6px;margin:16px 0;border-bottom:1px solid var(--line)}
+.tab{background:none;border:0;color:var(--mut);padding:10px 14px;font:inherit;cursor:pointer;border-bottom:2px solid transparent}
+.tab[aria-selected=true]{color:var(--acc);border-color:var(--acc);font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}
+@media(max-width:720px){.grid,.three{grid-template-columns:1fr}}
+canvas{width:100%;aspect-ratio:1;border-radius:10px;background:#000;display:block}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--mut);cursor:pointer}
+.drop:hover{border-color:var(--acc)}
+.row{display:flex;gap:8px;margin-top:10px}
+select,button.b{font:inherit;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:9px 12px}
+select{flex:1;min-width:0}
+button.b{cursor:pointer}button.p{border-radius:999px;background:var(--acc);color:#fff;border-color:var(--acc);width:100%;margin-top:10px;font-weight:600}
+[data-theme=dark] button.p,:root:not([data-theme=light]) button.p{color:#0e1320}
+.tag{display:inline-block;border-radius:999px;padding:3px 10px;font-size:13px;margin:4px 6px 0 0}
+.t-warn{background:var(--warnbg);color:var(--warn)}.t-bad{background:var(--badbg);color:var(--bad)}.t-good{background:var(--goodbg);color:var(--good)}.t-info{background:var(--accbg);color:var(--acc)}
+.bar{height:10px;border-radius:6px;background:var(--line);overflow:hidden;margin:3px 0 10px}.bar i{display:block;height:100%;background:var(--acc)}
+h3{margin:0 0 6px}.cap{color:var(--mut);font-size:13px;margin-top:6px}
+.cases{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}@media(max-width:720px){.cases{grid-template-columns:1fr}}
+.case{cursor:pointer}.case.sel{outline:2px solid var(--acc)}
+#key{flex:1;min-width:0;font:inherit;border:1px solid var(--line);border-radius:10px;padding:9px 12px;background:var(--card);color:var(--ink)}
+.sr{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}.drop:focus-visible{outline:2px solid var(--acc)}
+/* app-style redesign */
+:root{--sh:0 8px 28px rgba(20,60,70,.08);--onacc:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--onacc:#0e1320}}
+:root[data-theme=dark]{--onacc:#0e1320}
+body{background:radial-gradient(1100px 480px at 8% -8%,var(--accbg),transparent 60%),var(--bg);min-height:100vh}
+.wrap{max-width:1040px;padding:16px 16px 110px}
+.hdr{display:flex;align-items:center;gap:12px;padding:6px 2px 12px}
+.logo{width:48px;height:48px;border-radius:15px;display:grid;place-items:center;font-size:26px;background:var(--acc);box-shadow:var(--sh)}
+.hdr h1{font-size:24px;letter-spacing:-.3px}.hdr .sub{margin:0;font-size:14px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+.chip{font-size:12.5px;padding:5px 11px;border-radius:999px;background:var(--warnbg);color:var(--warn)}.chip.i{background:var(--accbg);color:var(--acc)}
+.card{box-shadow:var(--sh);border-radius:22px;padding:20px}
+h3{font-size:17px;margin-bottom:10px}
+.tabs{border:0;margin:0 0 16px;padding:5px;background:var(--card);border-radius:999px;box-shadow:var(--sh);width:max-content;max-width:100%;overflow-x:auto}
+.tab{border-radius:999px;padding:9px 16px;transition:.15s;display:flex;gap:6px;align-items:center;font-weight:600}
+.tab[aria-selected=true]{background:var(--acc);color:var(--onacc);border:0}
+.tab .ic{font-size:16px}
+button.b{border-radius:12px;font-weight:600;transition:.15s;cursor:pointer}
+button.b:hover{border-color:var(--acc)}button.b:active{transform:scale(.98)}
+button.b.p{border-radius:999px;background:var(--acc);color:var(--onacc);padding:14px;font-size:16px;box-shadow:0 8px 18px rgba(11,122,124,.25)}
+button.b:disabled{opacity:.6;cursor:wait}
+button:focus-visible,select:focus-visible,#key:focus-visible,.tab:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.drop{border-radius:18px;padding:28px 14px;background:var(--accbg);border:2px dashed var(--acc);color:var(--acc);font-weight:600;transition:.15s}
+.drop:hover{transform:translateY(-1px)}.drop .cap{font-weight:400}
+canvas{border-radius:16px}
+.three .card{padding:12px}.three .cap{text-align:center;font-weight:600;margin-top:8px}
+.hl{font-size:22px;font-weight:700;line-height:1.3;margin:2px 0 12px}
+.pb{display:flex;justify-content:space-between;font-size:14px;margin-top:6px}.pb.top{font-weight:700;color:var(--acc)}
+.bar{height:8px}.bar i{background:var(--mut);opacity:.5;transition:width .5s}.pb.top+.bar i{background:var(--acc);opacity:1}
+.empty{text-align:center;color:var(--mut);padding:32px 8px;font-size:44px}.empty p{font-size:14px;margin:8px 0 0}
+.spin{width:34px;height:34px;border:4px solid var(--line);border-top-color:var(--acc);border-radius:50%;margin:0 auto;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+details.hosp{margin-bottom:16px;padding:14px 18px}
+summary{cursor:pointer;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px}
+summary::-webkit-details-marker{display:none}summary::after{content:"▾";margin-left:auto;color:var(--mut)}
+details[open] summary::after{content:"▴"}details[open] summary{margin-bottom:6px}
+.case{transition:transform .15s}.case:hover{transform:translateY(-2px)}
+@media(max-width:720px){
+.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;margin:0;width:auto;justify-content:space-around;border-radius:22px 22px 0 0;padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px));overflow:visible}
+.tab{flex-direction:column;gap:2px;font-size:11.5px;padding:7px 8px;flex:1;justify-content:center}
+.tab .ic{font-size:21px}
+.hdr h1{font-size:22px}}
+input[type=range]{width:100%;accent-color:var(--acc);margin-top:8px}
+.tour{position:fixed;inset:0;background:rgba(10,20,30,.55);display:grid;place-items:center;z-index:50;padding:16px}
+.tbox{background:var(--card);border-radius:24px;padding:22px;max-width:380px;width:100%;box-shadow:var(--sh)}
+.tbox p{color:var(--mut);margin:0 0 16px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+[hidden]{display:none!important}
+</style></head><body><div class="wrap">
+<header class="hdr"><div class="logo">🫁</div><div><h1>MEDscan</h1><p class="sub">See how an AI looks at a lung scan, and where it can go wrong.</p></div><button class="b" id="help" type="button" style="margin-left:auto" aria-label="How it works">? How it works</button></header>
+<div class="chips"><span class="chip">💛 Research prototype, not for diagnosis</span><span class="chip i">🧪 Demo mode: results are simulated</span></div>
+
+<div class="tabs" role="tablist">
+<button class="tab" role="tab" aria-selected="true" data-t="a"><span class="ic">🔬</span>Analyze</button>
+<button class="tab" role="tab" aria-selected="false" data-t="f"><span class="ic">🧐</span>Mistakes</button>
+<button class="tab" role="tab" aria-selected="false" data-t="l"><span class="ic">💡</span>Limitations</button>
+<button class="tab" role="tab" aria-selected="false" data-t="r"><span class="ic">📊</span>Report</button></div>
+
+<section id="a"><details class="card hosp"><summary>🏥 Hospital connection <span class="tag t-info" id="hst">Not connected</span></summary>
+<div class="row"><input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your hospital API key" aria-label="Hospital API key"><button class="b" id="show" type="button">Show</button><button class="b" id="conn" type="button">Connect</button></div>
+<div class="cap" id="kmsg">Optional. Lets a hospital team link its own approved image source. The key stays in this tab only and is never saved.</div></details>
+<div class="grid">
+<div class="card"><h3>1. Pick a scan to explore 🖼️</h3>
+<div class="drop" id="drop" tabindex="0" role="button">📁 Click here, drop, or paste an image<div class="cap" style="margin:2px 0 0">PNG or JPG works best</div></div><input id="file" type="file" accept="image/*" class="sr" aria-label="Upload an image">
+<div class="row"><select id="ex"><option value="">Or try a labeled example…</option></select><button class="b" id="load">Load</button></div>
+<div class="cap" style="margin-top:10px">🩺 Conditions it can tell apart: <b>Normal, Pneumonia, Tuberculosis, COVID-19, Lung cancer (suspected), COPD, Pulmonary fibrosis</b></div><div class="cap" id="truth"></div>
+<button class="b p" id="run">Analyze my scan ✨</button></div>
+<div class="card" id="res"><h3>2. Results</h3><div class="empty">🫁<p>Pick a scan, then press <b>Analyze my scan</b>.<br>Your results will appear here.</p></div></div></div>
+<div class="three">
+<div class="card"><canvas id="c0" width="256" height="256"></canvas><div class="cap">Your scan</div></div>
+<div class="card"><canvas id="c1" width="256" height="256"></canvas><div class="cap">Where the model looked 🔍</div><input type="range" id="hs" min="0" max="100" value="65" aria-label="Heatmap strength"><button class="b" id="cmp" type="button" style="width:100%;margin-top:8px">👁 Hold to compare with original</button></div>
+<div class="card"><canvas id="c2" width="256" height="256"></canvas><div class="cap">Problem area ✏️</div></div></div>
+</section>
+
+<section id="f" hidden><div class="card"><h3>When the model gets it wrong 🧐</h3><div class="cap">Everyone makes mistakes, even AI. Tap a case to see what happened. (Placeholder cases for now.)</div></div>
+<div class="cases" id="cases" style="margin-top:12px"></div><div class="card" id="cnote" style="margin-top:12px" hidden></div></section>
+
+<section id="r" hidden><div class="card"><h3>Model report 📊</h3><div class="cap">Load the <b>report.json</b> that train.py creates to see how the model really performs on held-out test scans, including where it fails. No numbers are shown until you do.</div>
+<div class="row"><button class="b" id="repb" type="button">Choose report.json…</button><input id="rep" type="file" accept=".json,application/json" class="sr" aria-label="Load report.json"></div><div class="cap" id="repm"></div></div><div id="repout" style="margin-top:12px"></div></section>
+
+<section id="l" hidden><div class="card"><h3>Good to know before you trust it 💡</h3><ul>
+<li>Trained on a small public dataset; may not generalize to other scanners, hospitals, or populations.</li>
+<li>Similar-looking conditions are easy to confuse (for example pneumonia, COVID-19, tuberculosis, and pulmonary fibrosis), and real patients can have more than one condition at once. This demo predicts a single label.</li>
+<li>Small findings such as early lung nodules are easy to miss, and a normal-looking result never rules out disease. An X-ray can raise suspicion of lung cancer or COPD, but cannot confirm either.</li>
+<li>Heatmaps show where the model <i>looked</i>, not proof of <i>why</i> it decided. Use them as a debugging aid.</li>
+<li>Confidence is calibrated on the test set only and can be overconfident on unfamiliar images.</li>
+<li>Unsupported images (photos, screenshots, other modalities) are flagged, but the check is imperfect.</li>
+<li>Segmentation overlays are approximate and not clinically validated.</li></ul></div></section>
+</div>
+<div id="tour" class="tour" hidden role="dialog" aria-modal="true" aria-labelledby="tt"><div class="tbox"><div class="cap" id="tn"></div><h3 id="tt"></h3><p id="tb"></p><div class="row"><button class="b" id="tskip" type="button">Skip</button><button class="b p" id="tnext" type="button" style="margin:0;width:auto;flex:1">Next</button></div></div></div>
+<script>
+const CL=["Normal","Pneumonia","Tuberculosis","COVID-19","Lung cancer (suspected)","COPD","Pulmonary fibrosis"],$=s=>document.querySelector(s);
+let truth=null;
+function rng(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function synth(c,i){const x=c.getContext("2d"),r=rng(i+1),w=256;x.fillStyle="#111";x.fillRect(0,0,w,w);
+let g=x.createRadialGradient(128,128,10,128,128,120);g.addColorStop(0,"#9a9a9a");g.addColorStop(1,"#1a1a1a");x.fillStyle=g;x.fillRect(0,0,w,w);
+for(let q=0;q<i%CL.length;q++){let b=x.createRadialGradient(60+r()*136,60+r()*136,2,128,128,34);b.addColorStop(0,"rgba(255,255,255,.7)");b.addColorStop(1,"rgba(255,255,255,0)");x.fillStyle=b;x.fillRect(0,0,w,w)}
+const d=x.getImageData(0,0,w,w);for(let k=0;k<d.data.length;k+=4){const n=(r()-.5)*24;d.data[k]+=n;d.data[k+1]+=n;d.data[k+2]+=n}x.putImageData(d,0,0)}
+const EX=[0,1,2,3,4,5,6].map(i=>({name:"Example "+(i+1),label:CL[i%CL.length],i}));
+EX.forEach((e,k)=>$("#ex").add(new Option(e.name,k)));
+function show(canvas){const x=$("#c0").getContext("2d");x.drawImage(canvas,0,0)}
+function loadEx(){const k=$("#ex").value;if(k==="")return;const e=EX[k],t=document.createElement("canvas");t.width=t.height=256;synth(t,e.i);show(t);truth=e.label;$("#truth").innerHTML="Ground-truth label: <b>"+e.label+"</b>"}
+$("#load").onclick=loadEx;
+const msg=t=>{$("#truth").textContent=t};
+function useFile(f){
+if(!f)return;
+if(!f.type.startsWith("image/")){msg("That file isn't an image. Please choose a PNG, JPG, or similar.");return}
+const fr=new FileReader();
+fr.onerror=()=>msg("Sorry, I couldn't read that file. Please try another one.");
+fr.onload=()=>{const im=new Image();
+im.onerror=()=>msg("Sorry, I couldn't open that image. Please try another one.");
+im.onload=()=>{const x=$("#c0").getContext("2d"),s=Math.min(im.width,im.height);x.fillStyle="#000";x.fillRect(0,0,256,256);x.drawImage(im,(im.width-s)/2,(im.height-s)/2,s,s,0,0,256,256);truth=null;$("#ex").value="";msg("Got it! Your own upload has no ground-truth label. Press \u201cAnalyze my scan\u201d when you're ready.");$("#c1").getContext("2d").clearRect(0,0,256,256);$("#c2").getContext("2d").clearRect(0,0,256,256);HM=null;$("#res").innerHTML='<h3>2. Results</h3><div class="cap">Ready when you are! Press \u201cAnalyze my scan\u201d.</div>'};
+im.src=fr.result};
+fr.readAsDataURL(f)}
+$("#file").onchange=ev=>{const f=ev.target.files[0];useFile(f);ev.target.value=""};
+const dr=$("#drop");
+dr.onclick=()=>$("#file").click();
+dr.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();$("#file").click()}};
+["dragenter","dragover"].forEach(n=>dr.addEventListener(n,e=>{e.preventDefault();dr.style.borderColor="var(--acc)"}));
+["dragleave","drop"].forEach(n=>dr.addEventListener(n,e=>{e.preventDefault();dr.style.borderColor=""}));
+dr.addEventListener("drop",e=>useFile(e.dataTransfer.files[0]));
+window.addEventListener("dragover",e=>e.preventDefault());window.addEventListener("drop",e=>e.preventDefault());
+document.addEventListener("paste",e=>{const it=[...((e.clipboardData&&e.clipboardData.items)||[])].find(i=>i.type.startsWith("image/"));if(it)useFile(it.getAsFile())});
+$("#ex").onchange=loadEx;
+function jet(v){return[255*Math.min(1,Math.max(0,1.5-Math.abs(4*v-3))),255*Math.min(1,Math.max(0,1.5-Math.abs(4*v-2))),255*Math.min(1,Math.max(0,1.5-Math.abs(4*v-1)))]}
+function analyze(){const src=$("#c0"),x=src.getContext("2d"),d=x.getImageData(0,0,256,256),p=d.data;
+let hs=0,col=0;for(let k=0;k<p.length;k+=4){hs=(hs*31+(p[k]>>3))|0;col+=Math.abs(p[k]-p[k+2])}col/=(p.length/4)*255;
+const R=rng(hs),res=$("#res"),c1=$("#c1").getContext("2d"),c2=$("#c2").getContext("2d");
+if(col>0.05){res.innerHTML='<h3>2. Results</h3><span class="tag t-bad">🙈 Hmm, I don’t recognize this one</span><p>This doesn’t look like the scans the model learned from (score '+col.toFixed(2)+'), so I won’t guess. A made-up answer wouldn’t be reliable.</p>';
+HM=null;c1.clearRect(0,0,256,256);c2.clearRect(0,0,256,256);return}
+const l=CL.map(()=>(R()+R()+R()-1.5)*6),m=Math.max(...l),e=l.map(v=>Math.exp(v-m)),s=e.reduce((a,b)=>a+b),pr=e.map(v=>v/s),k=pr.indexOf(Math.max(...pr)),conf=pr[k];
+const cx=70+R()*116,cy=70+R()*116,out=c1.createImageData(256,256);
+for(let y=0;y<256;y++)for(let xx=0;xx<256;xx++){const i=(y*256+xx)*4,h=Math.exp(-(((y-cy)/46)**2+((xx-cx)/46)**2)),c=jet(h),a=h*.65;
+out.data[i]=p[i]*(1-a)+c[0]*a;out.data[i+1]=p[i+1]*(1-a)+c[1]*a;out.data[i+2]=p[i+2]*(1-a)+c[2]*a;out.data[i+3]=255}
+c1.putImageData(out,0,0);c2.putImageData(d,0,0);HM={cx:cx,cy:cy,p:Uint8ClampedArray.from(p)};drawHeat($("#hs").value/100);c2.fillStyle="rgba(0,220,120,.4)";c2.beginPath();c2.ellipse(cx,cy,48,36,0,0,7);c2.fill();
+let h='<h3>2. Results <span class="tag t-warn">SIMULATED, not a real analysis</span></h3><div class="hl">The model thinks this looks like <b>'+CL[k]+'</b> ('+Math.round(conf*100)+'% sure)</div>';
+h+=pr.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]).map(o=>'<div class="pb'+(o[1]===k?' top':'')+'"><span>'+CL[o[1]]+'</span><span>'+Math.round(o[0]*100)+'%</span></div><div class="bar"><i style="width:'+o[0]*100+'%"></i></div>').join("");
+if(conf<.7)h+='<span class="tag t-warn">🤔 Not very sure about this one, so take it with a grain of salt</span>';
+const o=pr.map((v,i)=>[v,i]).sort((a,b)=>b[0]-a[0]);if(o[0][0]-o[1][0]<.15)h+='<span class="tag t-info">🔀 Torn between '+CL[o[0][1]]+' and '+CL[o[1][1]]+'</span>';
+if(truth)h+=truth===CL[k]?'<span class="tag t-good">🎉 Nice! It matches the labeled example ('+truth+')</span>':'<span class="tag t-bad">😬 Oops, a miss! The labeled example is '+truth+'</span>';
+h+='<div class="cap">The colorful heatmap shows where the model looked. It’s a helpful hint, not proof of how it thinks.</div>';res.innerHTML=h}
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function reportHTML(r){const C=r.classes,cm=r.confusion_matrix,pc=r.per_class,pct=v=>(Number(v)*100).toFixed(1)+"%";
+let h='<div style="display:flex;gap:10px;flex-wrap:wrap">'+[["Accuracy",r.test_accuracy],["Macro-F1",r.test_macro_f1],["Calibration error (ECE, lower is better)",r.test_ece]].map(k=>'<div class="card" style="flex:1;min-width:150px"><div class="cap">'+k[0]+'</div><div style="font-size:24px;font-weight:700">'+pct(k[1])+'</div></div>').join("")+'</div>';
+h+='<div class="card" style="margin-top:12px;overflow-x:auto"><h3>Confusion matrix</h3><div class="cap">Rows = true condition, columns = what the model predicted. Off-diagonal cells are mistakes.</div><table style="border-collapse:collapse;margin-top:8px;width:100%"><tr><th></th>'+C.map(c=>'<th style="padding:6px;font-size:12px">'+esc(c)+'</th>').join("")+'</tr>';
+cm.forEach((row,i)=>{const tot=row.reduce((a,b)=>a+b,0)||1;h+='<tr><th style="text-align:right;padding:6px;font-size:12px">'+esc(C[i])+'</th>'+row.map((v,j)=>'<td style="text-align:center;padding:8px;border:1px solid var(--line);background:rgba(11,122,124,'+(0.08+0.6*v/tot).toFixed(2)+');font-weight:'+(i===j?700:400)+'">'+v+'</td>').join("")+'</tr>'});
+h+='</table></div><div class="card" style="margin-top:12px;overflow-x:auto"><h3>Per condition</h3><table style="border-collapse:collapse;width:100%"><tr><th style="text-align:left;padding:6px">Condition</th><th>Precision</th><th>Recall</th><th>F1</th></tr>'+C.map(c=>{const m=pc[c]||{};return '<tr><td style="padding:6px">'+esc(c)+'</td>'+["precision","recall","f1"].map(k=>'<td style="text-align:center">'+pct(m[k]||0)+(k==="recall"&&(m[k]||0)<.7?' <span class="tag t-warn">low</span>':'')+'</td>').join("")+'</tr>'}).join("")+'</table><div class="cap">Recall = how many real cases of that condition the model caught. A low value means it misses them.</div></div>';
+const pts=(r.reliability||[]).filter(b=>b.n>0);
+if(pts.length){const X=v=>30+v*240,Y=v=>270-v*240;h+='<div class="card" style="margin-top:12px"><h3>Reliability: can you trust the confidence?</h3><svg viewBox="0 0 300 300" style="max-width:340px;width:100%" role="img" aria-label="Reliability diagram"><rect x="30" y="30" width="240" height="240" fill="none" stroke="var(--line)"/><line x1="30" y1="270" x2="270" y2="30" stroke="var(--mut)" stroke-dasharray="4 4"/><polyline fill="none" stroke="var(--acc)" stroke-width="2" points="'+pts.map(b=>X(b.conf)+","+Y(b.acc)).join(" ")+'"/>'+pts.map(b=>'<circle cx="'+X(b.conf)+'" cy="'+Y(b.acc)+'" r="4" fill="var(--acc)"/>').join("")+'<text x="150" y="294" text-anchor="middle" fill="var(--mut)" font-size="11">Confidence</text><text x="10" y="150" text-anchor="middle" fill="var(--mut)" font-size="11" transform="rotate(-90 10 150)">Accuracy</text></svg><div class="cap">Dots on the dashed line mean confidence matches reality. Dots below it mean the model is overconfident.</div></div>'}
+return h}
+$("#repb").onclick=()=>$("#rep").click();
+$("#rep").onchange=ev=>{const f=ev.target.files[0];ev.target.value="";if(!f)return;const fr=new FileReader();
+fr.onload=()=>{try{const r=JSON.parse(fr.result);if(!Array.isArray(r.classes)||!Array.isArray(r.confusion_matrix)||!r.per_class)throw 0;$("#repout").innerHTML=reportHTML(r);$("#repm").textContent="Loaded "+f.name}catch(e){$("#repout").innerHTML="";$("#repm").textContent="Sorry, that does not look like a report.json made by train.py."}};
+fr.onerror=()=>{$("#repm").textContent="Sorry, I could not read that file."};fr.readAsText(f)};
+let HM=null;
+function drawHeat(v){if(!HM)return;const c=$("#c1").getContext("2d"),o=c.createImageData(256,256),p=HM.p;
+for(let y=0;y<256;y++)for(let x=0;x<256;x++){const i=(y*256+x)*4,h=Math.exp(-(((y-HM.cy)/46)**2+((x-HM.cx)/46)**2)),k=jet(h),a=h*v;
+o.data[i]=p[i]*(1-a)+k[0]*a;o.data[i+1]=p[i+1]*(1-a)+k[1]*a;o.data[i+2]=p[i+2]*(1-a)+k[2]*a;o.data[i+3]=255}c.putImageData(o,0,0)}
+$("#hs").oninput=()=>drawHeat($("#hs").value/100);
+const cb=$("#cmp"),back=()=>drawHeat($("#hs").value/100);
+cb.onpointerdown=()=>drawHeat(0);["pointerup","pointerleave","pointercancel"].forEach(n=>cb.addEventListener(n,back));
+cb.onkeydown=e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();drawHeat(0)}};cb.onkeyup=e=>{if(e.key===" "||e.key==="Enter")back()};
+const TS=[["Welcome 👋","MEDscan shows how an AI looks at a lung scan, how sure it is, and where it can be wrong. It is a research prototype, not a diagnostic tool."],["1. Pick a scan 🖼️","Drop in your own image or load a labeled example, then press Analyze my scan."],["2. See why 🔍","The heatmap shows where the model looked. Use the slider, or hold the compare button, to see the original scan."],["3. Check the mistakes 🧐","Open the Mistakes tab to see cases where the model was wrong, and the Report tab for real test results."]];
+let ti=0;function tour(i){ti=i;$("#tour").hidden=false;$("#tn").textContent="Step "+(i+1)+" of "+TS.length;$("#tt").textContent=TS[i][0];$("#tb").textContent=TS[i][1];$("#tnext").textContent=i<TS.length-1?"Next":"Got it";$("#tnext").focus()}
+function endTour(){$("#tour").hidden=true;try{localStorage.setItem("medscan_tour","1")}catch(e){}}
+$("#tnext").onclick=()=>ti<TS.length-1?tour(ti+1):endTour();$("#tskip").onclick=endTour;$("#help").onclick=()=>tour(0);
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#tour").hidden)endTour()});
+try{if(!localStorage.getItem("medscan_tour"))tour(0)}catch(e){tour(0)}
+let hospKey=null;
+$("#show").onclick=()=>{const k=$("#key"),h=k.type==="password";k.type=h?"text":"password";$("#show").textContent=h?"Hide":"Show"};
+function connect(){const v=$("#key").value.trim(),st=$("#hst"),m=$("#kmsg");
+if(hospKey){hospKey=null;$("#key").value="";$("#key").disabled=false;st.className="tag t-info";st.textContent="Not connected";m.textContent="Disconnected. Your key was cleared from this page.";$("#conn").textContent="Connect";return}
+if(!/^hosp_[A-Za-z0-9]{16,}$/.test(v)){st.className="tag t-bad";st.textContent="Invalid key";m.textContent="Demo keys look like hosp_ followed by at least 16 letters or numbers. Please check and try again.";return}
+hospKey=v;$("#key").value="";$("#key").disabled=true;st.className="tag t-good";st.textContent="Connected (demo)";
+m.textContent="Connected as a key ending in "+v.slice(-4)+". Demo mode: no real hospital system is contacted from this page.";$("#conn").textContent="Disconnect"}
+$("#conn").onclick=connect;$("#key").onkeydown=e=>{if(e.key==="Enter")connect()};
+$("#run").onclick=()=>{const b=$("#run");b.disabled=true;b.textContent="Analyzing…";$("#res").innerHTML='<h3>2. Results</h3><div class="empty"><div class="spin"></div><p>Looking at your scan…</p></div>';
+setTimeout(()=>{try{analyze()}finally{b.disabled=false;b.textContent="Analyze my scan ✨";$("#res").scrollIntoView({behavior:"smooth",block:"nearest"})}},700)};
+const FA=[["Normal","Pneumonia",.91,"Model focused on a corner text marker instead of the lung region."],["Tuberculosis","Pneumonia",.74,"Two diseases with similar-looking opacities. The model confused them."],["Lung cancer (suspected)","Normal",.83,"A small nodule was missed; the heatmap barely touched it."],["Tuberculosis","Normal",.61,"Subtle changes near the top of the lung were missed, so the model called it normal."],["COVID-19","Pneumonia",.58,"Low confidence and a close call between two conditions; the prediction is unreliable."],["COPD","Normal",.88,"Confidently wrong; the heatmap highlights the image border (a shortcut), not the lung."],["Pulmonary fibrosis","COPD",.66,"Both show scarring-like texture in the lungs, and the model mixed them up."]];
+FA.forEach((f,i)=>{const d=document.createElement("div");d.className="card case";d.innerHTML='<canvas width="256" height="256"></canvas><div class="cap">Pred: '+f[1]+' ('+Math.round(f[2]*100)+'%) | True: '+f[0]+'</div>';synth(d.querySelector("canvas"),10+i);
+d.onclick=()=>{document.querySelectorAll(".case").forEach(c=>c.classList.remove("sel"));d.classList.add("sel");const n=$("#cnote");n.hidden=false;n.innerHTML="<b>What happened (placeholder):</b> "+f[3]};$("#cases").appendChild(d)});
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected",b===t));["a","f","l","r"].forEach(id=>$("#"+id).hidden=id!==t.dataset.t)});
+synth($("#c0"),0);truth="Normal";$("#ex").value="0";$("#truth").innerHTML="Ground-truth label: <b>Normal</b>";
+if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0&&window.top===window.self)navigator.serviceWorker.register("sw.js").catch(function(){});
+</script></body></html>
