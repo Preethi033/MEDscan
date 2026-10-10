@@ -34,10 +34,14 @@ standard `localhost:8081` and `127.0.0.1:8081` Expo web origins; set
 `SCANEXPLAIN_CORS_ORIGINS` to comma-separated exact origins if the dev server
 uses a different port or host.
 
-The API starts with no model attached. It validates JPEG, PNG, and WebP uploads
-(12 MB maximum; 4096-pixel maximum side), normalizes decoded images through
-`preprocess_image`, and reports unconfigured features honestly. Invalid model
-outputs and operational errors are not replaced with success-shaped results.
+The default API connects a small PneumoniaMNIST logistic baseline for the
+benchmark classes, a coarse linear-feature attribution overlay, and a
+validation-embedding OOD screen. It validates JPEG, PNG, and WebP uploads
+(12 MB maximum; 4096-pixel maximum side) and normalizes decoded images through
+`preprocess_image`. Segmentation and a labeled failure report remain
+unconfigured. Invalid model outputs and operational errors are not replaced
+with success-shaped results. The classifier is trained on first analysis;
+startup and sample browsing do not trigger model fitting.
 
 Connect implementations with `ModelServices`:
 
@@ -62,22 +66,31 @@ include the predicted label. Overlays must be image objects encodable as PNG.
 
 ## Benchmark sample data
 
-The Samples screen downloads MedMNIST PneumoniaMNIST+ at 224×224 from the
-official Zenodo distribution only when requested. The verified archive is
+The API downloads MedMNIST PneumoniaMNIST+ at 224×224 from the official Zenodo
+distribution only when requested. The verified archive is
 cached at `~/.cache/scanexplain/`; it is not committed to the repository. Its
 current archive is approximately 214 MB. Official dataset license: CC BY 4.0.
 Attribution and dataset/source citations are included in the API response and
 mobile UI.
 
-The mobile Workspace starts with a separate, synthetic UI example with
-invented demo-only values. It is not connected to uploaded images, and
-contains no diagnosis. It must not be populated with real patient information
-in this demo.
+The Demo Cases tab assigns six training examples to fictional names. Search
+results show names only; the details panel shows one selected case. Display
+IDs and scan dates/times are synthetic UI metadata, not patient identifiers or
+image acquisition details. Uploaded images are not associated with fictional
+names. The displayed class label is a dataset annotation, not a diagnosis.
 
-The Workspace preloads six training examples from the benchmark's
-`pneumonia` class. Generated sample IDs are for browsing only and do not
-represent patient names or patient identifiers. The class label is shown as a
-dataset annotation, not as a diagnosis or a finding produced by this app.
+The baseline downsamples images to 16×16 grayscale features and trains a
+logistic classifier using only the benchmark training split. The validation
+split selects the stopping epoch and provides reference embeddings for upload
+screening. Its normalized scores are not calibrated probabilities of a
+medical condition, and its interpolated attribution overlay is not a lesion
+map.
+
+One held-out test-split run produced 181 true negatives, 53 false positives,
+24 false negatives, and 366 true positives across 624 images (87.7% accuracy,
+93.8% sensitivity, 77.4% specificity). This small benchmark result is not
+clinical evidence. The automated failure gallery and human shortcut-cue
+annotations remain unconnected.
 
 The dataset is based on pediatric chest X-rays, downsampled to 224×224, and
 provides classification labels only—not segmentation masks. MedMNIST's
@@ -121,12 +134,16 @@ These are screening signals, not a validated medical-image detector. A
 high-confidence prediction can still be wrong, and an unsupported image can
 look similar to supported embeddings. These checks must not be used to decide
 whether an emergency image is safe to assess.
+The demo baseline also flags extreme brightness, contrast, and edge-activity
+profiles relative to its validation split. These simple heuristics can miss
+unsupported images and can flag unusual but valid scans; they do not establish
+that an upload is a chest X-ray.
 
 ## Known limitations
 
-- No trained classifier, segmentation model, or explanation model is bundled.
-- No test-set results are included until the actual model and labeled test
-  examples are supplied and evaluated.
+- The bundled classifier is a simple educational logistic baseline, not a
+  clinically validated or calibrated model.
+- No segmentation model or labeled failure gallery is bundled.
 - Confidence and entropy depend on model calibration and can be misleading.
 - Embedding-distance screening depends on representative reference data,
   consistent preprocessing, and a chosen quantile; it may miss OOD inputs or

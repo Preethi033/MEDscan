@@ -21,23 +21,59 @@ const API_URL = (process.env.EXPO_PUBLIC_API_URL || "http://127.0.0.1:8000").rep
 const NOTICE =
   "Demo only — not for diagnosis, treatment decisions, or emergencies.";
 const TABS = [
-  ["review", "Workspace"],
   ["cases", "Demo Cases"],
+  ["review", "Workspace"],
   ["report", "Report"],
   ["failures", "Failures"],
   ["about", "Limitations"],
 ];
 const DEMO_CASE_NAMES = [
-  "Avery Chen",
-  "Jordan Rivera",
-  "Taylor Morgan",
-  "Riley Patel",
-  "Casey Brooks",
-  "Quinn Parker",
+  {
+    name: "Avery Chen",
+    label: "normal",
+    sampleOrdinal: 1,
+    displayId: "XR-482731",
+    scanDateTime: "2025-04-12 · 09:42 AM",
+  },
+  {
+    name: "Jordan Rivera",
+    label: "pneumonia",
+    sampleOrdinal: 1,
+    displayId: "XR-195604",
+    scanDateTime: "2025-05-03 · 02:18 PM",
+  },
+  {
+    name: "Taylor Morgan",
+    label: "normal",
+    sampleOrdinal: 2,
+    displayId: "XR-730816",
+    scanDateTime: "2025-06-21 · 11:07 AM",
+  },
+  {
+    name: "Riley Patel",
+    label: "pneumonia",
+    sampleOrdinal: 2,
+    displayId: "XR-361952",
+    scanDateTime: "2025-07-09 · 08:35 AM",
+  },
+  {
+    name: "Casey Brooks",
+    label: "normal",
+    sampleOrdinal: 3,
+    displayId: "XR-847203",
+    scanDateTime: "2025-08-16 · 04:51 PM",
+  },
+  {
+    name: "Quinn Parker",
+    label: "pneumonia",
+    sampleOrdinal: 3,
+    displayId: "XR-529174",
+    scanDateTime: "2025-09-02 · 10:26 AM",
+  },
 ];
 
 export default function App() {
-  const [tab, setTab] = useState("review");
+  const [tab, setTab] = useState("cases");
   const [serverStatus, setServerStatus] = useState("Connecting to demo service…");
   const [image, setImage] = useState(null);
   const [result, setResult] = useState(null);
@@ -211,7 +247,19 @@ export default function App() {
       ) {
         throw new Error("The Python API is outdated. Restart it from the latest project files.");
       }
-      setExamples(payload.examples || []);
+      const bySampleId = new Map(
+        (payload.examples || []).map((example) => [example.sample_id, example]),
+      );
+      const assignedExamples = DEMO_CASE_NAMES.map((demoCase) => {
+        const sampleId =
+          `PMN-TRAIN-${demoCase.label.toUpperCase()}-` +
+          String(demoCase.sampleOrdinal).padStart(4, "0");
+        return bySampleId.get(sampleId) || null;
+      });
+      if (assignedExamples.some((example) => !example)) {
+        throw new Error("The API did not return all six assigned benchmark cases.");
+      }
+      setExamples(assignedExamples);
       setSelectedExample(0);
     } catch (requestError) {
       setExamplesError(
@@ -289,7 +337,7 @@ export default function App() {
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {busy ? <ActivityIndicator color="#087e8b" style={styles.spinner} /> : null}
 
-          {tab === "review" ? (
+          {tab === "review" || tab === "cases" ? (
             <WorkspacePanel
               image={image}
               result={result}
@@ -297,31 +345,18 @@ export default function App() {
               selectedIndex={selectedExample}
               samplesError={examplesError}
               busy={busy}
-              onSelectSample={(index) => {
+              search={caseSearch}
+              onSearch={setCaseSearch}
+              onSelectNamedCase={(index) => {
                 setSelectedExample(index);
+                setCaseSearch("");
                 setImage(null);
                 setResult(null);
+                setError("");
               }}
               onChoose={chooseImage}
               onAnalyze={analyzeImage}
               onReload={loadExamples}
-            />
-          ) : null}
-          {tab === "cases" ? (
-            <DemoCasesPanel
-              examples={examples}
-              search={caseSearch}
-              selectedIndex={selectedExample}
-              onSearch={setCaseSearch}
-              onSelect={(index) => {
-                setSelectedExample(index);
-                setImage(null);
-                setResult(null);
-                setTab("review");
-                setError("");
-              }}
-              onReload={loadExamples}
-              samplesError={examplesError}
             />
           ) : null}
           {tab === "report" ? (
@@ -329,6 +364,7 @@ export default function App() {
               result={result}
               image={image}
               selectedSample={examples[selectedExample]}
+              selectedName={DEMO_CASE_NAMES[selectedExample]?.name}
             />
           ) : null}
           {tab === "failures" ? <FailuresPanel report={failures} /> : null}
@@ -345,12 +381,17 @@ function WorkspacePanel({
   examples,
   selectedIndex,
   samplesError,
-  onSelectSample,
   onChoose,
   onAnalyze,
   onReload,
+  search,
+  onSearch,
+  onSelectNamedCase,
 }) {
   const selectedSample = examples[selectedIndex];
+  const selectedCase = DEMO_CASE_NAMES[selectedIndex];
+  const caseSearchActive = search.trim().length > 0;
+  const caseQuery = search.trim().toLowerCase();
   const [previewError, setPreviewError] = useState(false);
   const activeImage = image
     ? { uri: image.uri }
@@ -363,40 +404,128 @@ function WorkspacePanel({
     <View>
       <Text style={styles.sectionTitle}>Case workspace</Text>
       <Text style={styles.body}>
-        Start with the fictional demo record and a benchmark image, or select an image from your
-        device. The record is not associated with any benchmark sample.
+        Search for a fictional demo name to load its assigned public benchmark image, or upload
+        your own image.
       </Text>
       <Text style={styles.muted}>
         On a computer, drag an image anywhere onto this page, or use Upload to choose a file.
+        Searching for a name shows only matching cases.
       </Text>
+
+      {examples.length && !image ? (
+        <View style={styles.casePicker}>
+          <Text style={styles.cardTitle}>Find a demo case by name</Text>
+          <TextInput
+            accessibilityLabel="Search fictional demo names"
+            placeholder="Search fictional name"
+            placeholderTextColor="#647887"
+            value={search}
+            onChangeText={onSearch}
+            style={styles.searchInput}
+          />
+          {caseSearchActive
+            ? ["normal", "pneumonia"].map((category) => {
+                const categoryCases = DEMO_CASE_NAMES
+                  .map((demoCase, index) => ({ ...demoCase, index }))
+                  .filter(
+                    (demoCase) =>
+                      demoCase.label === category &&
+                      demoCase.name.toLowerCase().includes(caseQuery),
+                  );
+                if (!categoryCases.length) return null;
+                return (
+                  <View key={category}>
+                    <Text style={styles.caseCategoryHeading}>
+                      {category === "normal" ? "Normal" : "Pneumonia"} dataset-label category
+                    </Text>
+                    {categoryCases.map((demoCase) => (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={demoCase.name}
+                        accessibilityState={{ selected: selectedIndex === demoCase.index }}
+                        key={demoCase.name}
+                        onPress={() => onSelectNamedCase(demoCase.index)}
+                        style={[
+                          styles.demoCaseRow,
+                          selectedIndex === demoCase.index && styles.selectedDemoCase,
+                        ]}
+                      >
+                        <View style={styles.demoCaseHeading}>
+                          <Text style={styles.chartName}>{demoCase.name}</Text>
+                          <Text style={styles.recordStatus}>FICTIONAL</Text>
+                        </View>
+                      </Pressable>
+                    ))}
+                  </View>
+                );
+              })
+            : null}
+          {caseSearchActive &&
+          !DEMO_CASE_NAMES.some((demoCase) =>
+            demoCase.name.toLowerCase().includes(caseQuery),
+          ) ? (
+            <Text style={styles.muted}>No fictional demo name matches that search.</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {!examples.length ? (
+        <View>
+          <Text style={styles.muted}>
+            Six benchmark images load from the Python API on startup.
+          </Text>
+          {samplesError ? <Text style={styles.error}>{samplesError}</Text> : null}
+          <Pressable onPress={onReload} style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>Retry loading samples</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={styles.workspaceGrid}>
         <View style={styles.recordCard}>
           <View style={styles.recordHeader}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>
-                {DEMO_CASE_NAMES[selectedIndex]?.[0] || "D"}
+                {image ? "U" : selectedCase?.name?.[0] || "D"}
               </Text>
             </View>
             <View style={styles.recordHeading}>
               <Text style={styles.chartName}>
-                {image ? "Uploaded image" : DEMO_CASE_NAMES[selectedIndex] || "Demo case"}
+                {image ? "Uploaded image" : selectedCase?.name || "Demo case"}
               </Text>
-              <Text style={styles.recordSubtitle}>Fictional demo name · no patient record</Text>
+              <Text style={styles.recordSubtitle}>
+                {image
+                  ? "User-selected image · no patient record"
+                  : "Fictional demo name · no patient record"}
+              </Text>
             </View>
-            <Text style={styles.recordStatus}>SIMULATED</Text>
+            {!image ? <Text style={styles.recordStatus}>SIMULATED</Text> : null}
           </View>
           <View style={styles.recordDetails}>
-            <ChartField label="Benchmark sample" value={selectedSample?.sample_id || "Not selected"} />
             <ChartField
-              label="Dataset reference label"
-              value={selectedSample?.label || "Unavailable"}
+              label="Dataset category"
+              value={
+                image
+                  ? "Unavailable for uploads"
+                  : selectedSample?.label
+                      ?.replace("Benchmark label: ", "")
+                      .replace(" (not a diagnosis)", "") || "Unavailable"
+              }
             />
+            {!image ? (
+              <>
+                <ChartField label="Demo scan ID" value={selectedCase?.displayId || "Not assigned"} />
+                <ChartField
+                  label="Demo scan date and time (simulated)"
+                  value={selectedCase?.scanDateTime || "Not available"}
+                />
+              </>
+            ) : null}
             <ChartField label="Diagnosis" value="Not provided by this demo" />
           </View>
           <Text style={styles.syntheticNote}>
-            Fictional name only. The public benchmark image is not this person's scan and is not
-            linked to this name.
+            {image
+              ? "Uploaded image only. No patient identity or scan date/time is inferred."
+              : "Fictional profile and scan date/time for this interface only. The assigned public benchmark image is not this person's scan and carries no patient acquisition time."}
           </Text>
         </View>
 
@@ -407,12 +536,20 @@ function WorkspacePanel({
               <Text style={styles.recordSubtitle}>
                 {image
                   ? image.fileName || "Uploaded image"
-                  : selectedSample?.sample_id || "Loading benchmark samples…"}
+                  : selectedCase?.name || "Loading demo cases…"}
               </Text>
             </View>
             <Pressable onPress={onChoose} style={styles.uploadButton}>
               <Text style={styles.uploadButtonText}>＋ Upload</Text>
             </Pressable>
+            {image ? (
+              <Pressable
+                onPress={() => onSelectNamedCase(selectedIndex)}
+                style={styles.uploadButton}
+              >
+                <Text style={styles.uploadButtonText}>Return to demo case</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {activeImage && !previewError ? (
@@ -435,30 +572,17 @@ function WorkspacePanel({
 
           <Text style={styles.imageSourceNote}>
             {image
-              ? "User-selected image · not associated with any demo name"
-              : "Public pediatric chest X-ray benchmark · not the scan of the fictional name above"}
+              ? "User-selected image · not a patient record"
+              : `Public pediatric chest X-ray benchmark · demo assignment for ${selectedCase?.name || "fictional case"} · not a patient scan`}
           </Text>
-
-          {!examples.length ? (
-            <View>
-              <Text style={styles.muted}>
-                Six benchmark images load from the Python API on startup.
-              </Text>
-              {samplesError ? <Text style={styles.error}>{samplesError}</Text> : null}
-              <Pressable onPress={onReload} style={styles.secondaryButton}>
-                <Text style={styles.secondaryButtonText}>Retry loading samples</Text>
-              </Pressable>
-            </View>
-          ) : null}
 
           <Text style={styles.datasetLabel}>
             {image
               ? "Uploaded demo image"
-              : selectedSample?.label || "Benchmark label unavailable"}
+              : `Dataset reference category: ${selectedCase?.label || "unavailable"}`}
           </Text>
           <Text style={styles.muted}>
-            Benchmark labels are dataset annotations, not diagnoses. Images are not linked to
-            names or patient information.
+            Categories are dataset annotations, not patient diagnoses or clinical findings.
           </Text>
 
           <Pressable
@@ -475,8 +599,8 @@ function WorkspacePanel({
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Model attribution intensity</Text>
         <Text style={styles.body}>
-          Highlighted regions represent influence assigned by a connected explanation method.
-          They do not show disease location or severity.
+          Highlighted regions show pixel influence for the low-resolution linear demo classifier.
+          They do not show disease location, severity, or probability.
         </Text>
         {result?.explanation_overlay ? (
           <>
@@ -506,82 +630,18 @@ function WorkspacePanel({
   );
 }
 
-function DemoCasesPanel({
-  examples,
-  search,
-  selectedIndex,
-  onSearch,
-  onSelect,
-  onReload,
-  samplesError,
-}) {
-  const matchingCases = DEMO_CASE_NAMES
-    .map((name, index) => ({ name, index, sample: examples[index] }))
-    .filter(({ name, sample }) => sample && name.toLowerCase().includes(search.toLowerCase()));
-
-  return (
-    <View>
-      <Text style={styles.sectionTitle}>Search demo cases</Text>
-      <Text style={styles.body}>
-        Search and select by fictional name. Each name has one public benchmark image assigned
-        for this demonstration.
-      </Text>
-      <View style={styles.syntheticNotice}>
-        <Text style={styles.syntheticNoticeTitle}>SIMULATION ONLY</Text>
-        <Text style={styles.syntheticNoticeText}>
-          Names are fictional. Each selection shows an unrelated public benchmark
-          image—not that person's scan. Dataset labels are not diagnoses.
-        </Text>
-      </View>
-      <TextInput
-        accessibilityLabel="Search fictional demo names"
-        placeholder="Search fictional name"
-        placeholderTextColor="#647887"
-        value={search}
-        onChangeText={onSearch}
-        style={styles.searchInput}
-      />
-      {matchingCases.map(({ name, index }) => (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={name}
-          accessibilityState={{ selected: selectedIndex === index }}
-          key={name}
-          onPress={() => onSelect(index)}
-          style={[styles.demoCaseRow, selectedIndex === index && styles.selectedDemoCase]}
-        >
-          <View style={styles.demoCaseHeading}>
-            <Text style={styles.chartName}>{name}</Text>
-            <Text style={styles.recordStatus}>FICTIONAL</Text>
-          </View>
-          <Text style={styles.recordSubtitle}>Demo-only name · one benchmark image assigned</Text>
-        </Pressable>
-      ))}
-      {!matchingCases.length ? (
-        <Text style={styles.muted}>
-          {examples.length ? "No fictional demo names match that search." : "Loading demo cases…"}
-        </Text>
-      ) : null}
-      {samplesError ? <Text style={styles.error}>{samplesError}</Text> : null}
-      {!examples.length ? (
-        <Pressable onPress={onReload} style={styles.secondaryButton}>
-          <Text style={styles.secondaryButtonText}>Retry loading demo cases</Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
-
 function PredictionSummary({ result }) {
   const prediction = result.prediction;
   return (
     <View style={[styles.card, prediction ? styles.predictionCard : styles.unavailableCard]}>
       <Text style={styles.cardTitle}>
-        {prediction ? `Model output: ${prediction.label}` : "Prediction unavailable"}
+        {prediction
+          ? `Benchmark class estimate: ${prediction.label}`
+          : "Prediction unavailable"}
       </Text>
       {prediction ? (
         <Text style={styles.body}>
-          Top-class confidence: {(result.confidence * 100).toFixed(1)}%
+          Top-class model score: {(result.confidence * 100).toFixed(1)}%
         </Text>
       ) : (
         <Text style={styles.body}>No classifier is connected; no prediction was made.</Text>
@@ -595,7 +655,7 @@ function PredictionSummary({ result }) {
   );
 }
 
-function ReportPanel({ result, image, selectedSample }) {
+function ReportPanel({ result, image, selectedSample, selectedName }) {
   if (!result) {
     return (
       <View>
@@ -617,7 +677,7 @@ function ReportPanel({ result, image, selectedSample }) {
       <Text style={styles.body}>
         {image?.fileName
           ? `Image: ${image.fileName}`
-          : result.sample?.sample_id || selectedSample?.sample_id || "Research image"}
+          : selectedName || result.sample?.sample_id || selectedSample?.sample_id || "Demo image"}
       </Text>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Prediction</Text>
@@ -625,12 +685,13 @@ function ReportPanel({ result, image, selectedSample }) {
           <>
             <Text style={styles.reportLabel}>{prediction.label}</Text>
             <Text style={styles.body}>
-              Top-class confidence: {(result.confidence * 100).toFixed(1)}%
+              Top-class model score: {(result.confidence * 100).toFixed(1)}%
             </Text>
             <Text style={styles.muted}>
-              Confidence is a model score, not the probability of a medical condition.
+              These are scores for benchmark dataset classes, not calibrated probabilities of a
+              medical condition.
             </Text>
-            <Text style={styles.cardTitle}>Class probabilities</Text>
+            <Text style={styles.cardTitle}>Benchmark class scores</Text>
             {Object.entries(prediction.probs).map(([label, probability]) => (
               <ProbabilityBar key={label} label={label} probability={probability} />
             ))}
@@ -662,7 +723,8 @@ function ReportPanel({ result, image, selectedSample }) {
               resizeMode="contain"
             />
             <Text style={styles.muted}>
-              Attribution intensity reflects model influence only—not disease location or severity.
+              This low-resolution linear-feature attribution reflects model influence only—not
+              disease location, severity, or probability.
             </Text>
           </>
         ) : (
@@ -767,6 +829,8 @@ function LimitationsPanel() {
           • Do not use it for diagnosis, emergency triage, treatment decisions, or to delay care.
           {"\n"}
           • Confidence can be miscalibrated; a high score does not establish correctness.{"\n"}
+          • The bundled classifier is a simple low-resolution benchmark baseline; scores are not
+          calibrated medical probabilities.{"\n"}
           • Explanations are not causal evidence; segmentations are not clinical measurements.
           {"\n"}
           • PneumoniaMNIST is small, pediatric, downsampled, and explicitly not for clinical use.
@@ -774,6 +838,8 @@ function LimitationsPanel() {
           • The synthetic demo record is not linked to uploaded images.
           {"\n"}
           • Dataset, labeling, preprocessing, and population shifts can change model behavior.
+          {"\n"}
+          • Upload screening is heuristic and cannot guarantee that an image is a supported X-ray.
         </Text>
       </View>
     </View>
@@ -1065,6 +1131,13 @@ const styles = StyleSheet.create({
     color: "#17232b",
     fontSize: 14,
     marginVertical: 10,
+  },
+  caseCategoryHeading: {
+    color: "#31566f",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 12,
+    marginBottom: 3,
   },
   demoCaseRow: {
     backgroundColor: "#ffffff",

@@ -37,7 +37,7 @@ class ApiHandlerTests(unittest.TestCase):
         }
 
     def test_health_and_stub_upload_report_no_fabricated_prediction(self):
-        routes = self._routes()
+        routes = self._routes(ModelServices())
         health = routes["/api/health"]()
         result = asyncio.run(routes["/api/analyze"](_upload()))
 
@@ -45,6 +45,13 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertIsNone(result["prediction"])
         self.assertIsNone(result["screening"])
         self.assertFalse(result["features"]["prediction"])
+
+    def test_default_api_configures_benchmark_classifier_and_upload_screening(self):
+        health = self._routes()["/api/health"]()
+
+        self.assertTrue(health["features"]["prediction"])
+        self.assertTrue(health["features"]["explanation"])
+        self.assertTrue(health["features"]["embedding_screening"])
 
     def test_configured_components_return_prediction_and_overlays(self):
         services = ModelServices(

@@ -47,7 +47,10 @@ class ModelServices:
         explain_fn: Callable[[Any], Any] | None = None,
         segment_fn: Callable[[Any], Any] | None = None,
         embedding_fn: Callable[[Any], Any] | None = None,
-        ood_reference: EmbeddingReference | None = None,
+        ood_reference: (
+            EmbeddingReference | Callable[[], EmbeddingReference] | None
+        ) = None,
+        input_screen_fn: Callable[[Any], tuple[str, ...]] | None = None,
         compare_fn: Callable[[Any, Mapping[str, Any]], tuple[Any, str]] | None = None,
     ) -> None:
         self._predict_fn = predict_fn
@@ -55,6 +58,7 @@ class ModelServices:
         self._segment_fn = segment_fn
         self._embedding_fn = embedding_fn
         self._ood_reference = ood_reference
+        self._input_screen_fn = input_screen_fn
         self._compare_fn = compare_fn
 
     @property
@@ -66,6 +70,7 @@ class ModelServices:
             "embedding_screening": (
                 self._embedding_fn is not None and self._ood_reference is not None
             ),
+            "input_quality_screening": self._input_screen_fn is not None,
             "comparison": self._compare_fn is not None,
         }
 
@@ -104,11 +109,25 @@ class ModelServices:
     ) -> OODDecision:
         probabilities = tuple(prediction["probs"].values())
         embedding = None
-        reference = None
-        if self._ood_reference is not None and self._embedding_fn is not None:
+        reference = self._ood_reference
+        if reference is not None and self._embedding_fn is not None:
             embedding = self._embedding_fn(image)
-            reference = self._ood_reference
-        return check_ood(probabilities, reference=reference, embedding=embedding)
+            if callable(reference):
+                reference = reference()
+        decision = check_ood(probabilities, reference=reference, embedding=embedding)
+        input_reasons = (
+            self._input_screen_fn(image) if self._input_screen_fn is not None else ()
+        )
+        if not input_reasons:
+            return decision
+        return OODDecision(
+            status="ood_suspected",
+            confidence=decision.confidence,
+            normalized_entropy=decision.normalized_entropy,
+            nearest_embedding_distance=decision.nearest_embedding_distance,
+            embedding_distance_threshold=decision.embedding_distance_threshold,
+            reasons=tuple(dict.fromkeys((*decision.reasons, *input_reasons))),
+        )
 
     def compare(self, image: Any, prediction: Mapping[str, Any]) -> tuple[Any, str]:
         return self.compare_preprocessed(preprocess_image(image), prediction)

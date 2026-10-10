@@ -7,6 +7,7 @@ from io import BytesIO
 import os
 from typing import Any, Literal
 
+from .benchmark_model import PneumoniaMNISTBaseline
 from .dataset import (
     DATASET_ATTRIBUTION,
     load_pneumoniamnist_gallery,
@@ -39,7 +40,7 @@ def create_app(
             "`python -m pip install '.[api]'`."
         ) from error
 
-    backend = services or ModelServices()
+    backend = services if services is not None else _default_model_services()
     application = FastAPI(
         title="MedScan demo API",
         description=DEMO_NOTICE,
@@ -217,6 +218,17 @@ def _analyze_normalized(image: Any, backend: ModelServices) -> dict[str, Any]:
         pass
 
     return result
+
+
+def _default_model_services() -> ModelServices:
+    model = PneumoniaMNISTBaseline()
+    return ModelServices(
+        predict_fn=model.predict,
+        explain_fn=model.explain,
+        embedding_fn=model.embed,
+        ood_reference=lambda: model.reference,
+        input_screen_fn=model.screen_input,
+    )
 
 
 app = create_app()

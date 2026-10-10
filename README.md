@@ -31,15 +31,30 @@ starts a local website; no QR code or Expo Go is needed.
 3. Open the local browser URL Expo prints (usually
    `http://localhost:8081`). Use the browser URL only; no QR scan is required.
 
-The repo targets Expo SDK 57. The landing Workspace starts with a selectable
-benchmark image. The **Demo Cases** tab lets you search/select by six fictional names. Each name
-is assigned one independent public benchmark image for demonstration; the
-names are not patients and the images are not their scans. The Report tab shows model
-output when a model is connected. Failures and Limitations remain separate
-tabs. The app does not generate diagnoses or symptom-based differentials.
-Heatmap intensity means model attribution only; it does not mean disease
-location or severity. Model components and test-set reports are injected
-through the Python API and are clearly marked unavailable until connected.
+The repo targets Expo SDK 57. **Demo Cases** is the first tab. Search by one of
+six fictional names; only the selected case's details appear, and other names
+appear as search matches only while choosing a case. Each case has a generated
+demo ID and simulated date/time. These values are interface-only: the public
+benchmark has no patient identities or acquisition timestamps, and the image
+does not belong to the fictional person. Uploads never inherit that metadata.
+
+The API trains a small 16×16 logistic-regression baseline on the
+PneumoniaMNIST training split the first time analysis is requested; validation
+data selects when training stops. It predicts benchmark dataset classes, not
+diagnoses. Its normalized class scores are not calibrated clinical
+probabilities. A coarse pixel-attribution overlay explains the baseline's
+features; it is not a lesion map or probability heatmap. Upload screening uses
+a validation-embedding distance check, prediction uncertainty, and simple
+validation-profile checks for extreme brightness, contrast, and edge activity.
+It is not a validated detector for arbitrary medical images.
+Segmentation and the failure gallery remain unavailable until separately
+connected.
+
+On the official held-out test split, one run produced 181 true negatives, 53
+false positives, 24 false negatives, and 366 true positives (624 images;
+87.7% accuracy, 93.8% sensitivity, 77.4% specificity). This is a small
+benchmark result, not evidence of clinical performance. The automated failure
+gallery and human shortcut-cue annotations are not connected.
 
 The Workspace preloads six PneumoniaMNIST training images, balanced between
 the benchmark labels `normal` and `pneumonia`. Each is a pediatric chest X-ray,
@@ -52,7 +67,8 @@ project files, then tap **Retry loading demo cases**. The API serves each scan
 image from its own PNG endpoint.
 On first use, the API downloads and checksum-verifies an
 approximately 214 MB dataset archive; keep that server terminal running and
-allow the download to finish.
+allow the download to finish. The first analysis also trains the demo baseline
+and prepares its validation reference.
 
 The default browser API address is `http://127.0.0.1:8000`. The API allows
 browser requests from `localhost:8081` and `127.0.0.1:8081`. If Expo prints a
@@ -65,13 +81,14 @@ SCANEXPLAIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081 python -m s
 
 ## Demo sample dataset
 
-The Workspace downloads official PneumoniaMNIST MedMNIST+ 224×224 data on
+The API downloads official PneumoniaMNIST MedMNIST+ 224×224 data on
 request to `~/.cache/scanexplain/` on the Python server. Its 214 MB archive is
 verified against the official MedMNIST v3 MD5 checksum. It is not copied into
 the repository. License: CC BY 4.0; attribution is included in the app.
 
 PneumoniaMNIST is a small, downsampled pediatric chest X-ray classification
-benchmark. It has no segmentation masks, does not represent general emergency
+benchmark. This simple baseline is not a clinically validated model. The
+dataset has no segmentation masks, does not represent general emergency
 imaging, and its maintainers explicitly state it is **not intended for
 clinical use**. It cannot validate emergency diagnosis or generalize to
 arbitrary medical uploads.
