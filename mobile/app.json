@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "ScanExplain Research",
+    "slug": "scanexplain-research",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose a sample image for this non-clinical research demonstration.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ]
+  }
+}
