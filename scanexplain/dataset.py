@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import hashlib
 import os
 from pathlib import Path
+import re
 import tempfile
 from typing import Any
 from urllib.request import urlopen
@@ -53,7 +55,33 @@ def load_pneumoniamnist_split(
 
     root = Path(data_dir) if data_dir is not None else Path.home() / ".cache" / "scanexplain"
     dataset_path = _ensure_dataset_file(root)
-    with np.load(dataset_path, allow_pickle=False) as archive:
+    stat = dataset_path.stat()
+    return _load_cached_split(
+        str(dataset_path.resolve()),
+        split,
+        stat.st_mtime_ns,
+        stat.st_ctime_ns,
+        stat.st_size,
+    )
+
+
+@lru_cache(maxsize=6)
+def _load_cached_split(
+    path: str,
+    split: str,
+    _modified_ns: int,
+    _changed_ns: int,
+    _size: int,
+) -> DatasetSplit:
+    try:
+        import numpy as np
+    except ImportError as error:
+        raise RuntimeError(
+            "NumPy is required for dataset samples. Install with "
+            "`python -m pip install '.[api]'`."
+        ) from error
+
+    with np.load(path, allow_pickle=False) as archive:
         images = archive[f"{split}_images"]
         labels = archive[f"{split}_labels"].reshape(-1)
     return DatasetSplit(images=images, labels=labels)
@@ -63,11 +91,16 @@ def load_pneumoniamnist_gallery(
     *,
     split: str = "train",
     limit: int = 8,
+    label: str | None = None,
     data_dir: str | Path | None = None,
 ) -> list[tuple[Any, str]]:
-    """Return a small labeled image gallery from the requested dataset split."""
+    """Return labeled benchmark images, optionally filtered to one dataset class."""
     if limit < 1:
         raise ValueError("limit must be at least 1")
+    if label not in (None, "all", *LABEL_NAMES.values()):
+        raise ValueError(
+            f"label must be 'all' or one of {', '.join(LABEL_NAMES.values())}"
+        )
     dataset = load_pneumoniamnist_split(split, data_dir=data_dir)
 
     try:
@@ -78,24 +111,37 @@ def load_pneumoniamnist_gallery(
             "dependencies with `python -m pip install '.[api]'`."
         ) from error
 
-    selected_indices = []
-    indices_by_label = {
-        label_id: [index for index, value in enumerate(dataset.labels) if int(value) == label_id]
-        for label_id in LABEL_NAMES
-    }
-    offset = 0
-    while len(selected_indices) < limit:
-        added = False
-        for label_id in LABEL_NAMES:
-            indices = indices_by_label[label_id]
-            if offset < len(indices):
-                selected_indices.append(indices[offset])
-                added = True
-                if len(selected_indices) == limit:
-                    break
-        if not added:
-            break
-        offset += 1
+    if label in (None, "all"):
+        selected_indices = []
+        indices_by_label = {
+            label_id: [
+                index for index, value in enumerate(dataset.labels)
+                if int(value) == label_id
+            ]
+            for label_id in LABEL_NAMES
+        }
+        offset = 0
+        while len(selected_indices) < limit:
+            added = False
+            for label_id in LABEL_NAMES:
+                indices = indices_by_label[label_id]
+                if offset < len(indices):
+                    selected_indices.append(indices[offset])
+                    added = True
+                    if len(selected_indices) == limit:
+                        break
+            if not added:
+                break
+            offset += 1
+    else:
+        selected_label = next(
+            label_id for label_id, name in LABEL_NAMES.items() if name == label
+        )
+        selected_indices = [
+            index
+            for index, value in enumerate(dataset.labels)
+            if int(value) == selected_label
+        ][:limit]
 
     examples = []
     for index in selected_indices:
@@ -105,10 +151,53 @@ def load_pneumoniamnist_gallery(
         examples.append(
             (
                 Image.fromarray(image),
-                f"Dataset label: {LABEL_NAMES.get(label_id, f'unknown ({label_id})')}",
+                f"Benchmark label: {LABEL_NAMES.get(label_id, f'unknown ({label_id})')} "
+                "(not a diagnosis)",
             )
         )
     return examples
+
+
+def load_pneumoniamnist_sample(
+    sample_id: str,
+    *,
+    data_dir: str | Path | None = None,
+) -> tuple[Any, str]:
+    """Load a class-specific training sample by its generated gallery ID."""
+    match = re.fullmatch(
+        r"PMN-TRAIN-(?:(NORMAL|PNEUMONIA)-)?(\d{4})",
+        sample_id,
+    )
+    if match is None:
+        raise ValueError(
+            "sample_id must be a generated PMN-TRAIN-#### or "
+            "PMN-TRAIN-{NORMAL|PNEUMONIA}-#### sample ID"
+        )
+    class_name = (match.group(1) or "PNEUMONIA").lower()
+    sample_number = int(match.group(2))
+    if sample_number < 1:
+        raise ValueError("sample_id index must be at least 1")
+
+    dataset = load_pneumoniamnist_split("train", data_dir=data_dir)
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError as error:
+        raise RuntimeError(
+            "NumPy and Pillow are required to load a benchmark sample. "
+            "Install the API dependencies with `python -m pip install '.[api]'`."
+        ) from error
+
+    label_id = next(
+        label_id for label_id, name in LABEL_NAMES.items() if name == class_name
+    )
+    class_indices = np.flatnonzero(dataset.labels == label_id)
+    if sample_number > len(class_indices):
+        raise ValueError(f"Unknown {class_name} benchmark sample: {sample_id}")
+    image_index = int(class_indices[sample_number - 1])
+    image = Image.fromarray(dataset.images[image_index])
+    label = f"Benchmark label: {class_name} (not a diagnosis)"
+    return image, label
 
 
 def make_pneumoniamnist_comparator(
@@ -146,11 +235,14 @@ def _ensure_dataset_file(root: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     destination = root / DATASET_FILENAME
     if destination.exists():
-        if _md5(destination) != DATASET_MD5:
-            raise ValueError(
-                f"Cached dataset checksum failed: {destination}. "
-                "Move or remove that file before downloading again."
-            )
+        stat = destination.stat()
+        _verify_cached_dataset(
+            str(destination.resolve()),
+            DATASET_MD5,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+            stat.st_size,
+        )
         return destination
 
     file_descriptor, temporary_name = tempfile.mkstemp(
@@ -184,3 +276,18 @@ def _md5(path: Path) -> str:
         while chunk := source.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+@lru_cache(maxsize=8)
+def _verify_cached_dataset(
+    path: str,
+    expected_md5: str,
+    _modified_ns: int,
+    _changed_ns: int,
+    _size: int,
+) -> None:
+    if _md5(Path(path)) != expected_md5:
+        raise ValueError(
+            f"Cached dataset checksum failed: {path}. "
+            "Move or remove that file before downloading again."
+        )

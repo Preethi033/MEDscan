@@ -1,6 +1,6 @@
 # Failure analysis and trust layer
 
-ScanExplain is a research prototype for supported sample images. It is not a
+MedScan is an educational demo for supported sample images. It is not a
 medical device and is **not for diagnosis, treatment decisions, or emergency
 care**. A model prediction, confidence score, similarity score, or visual
 explanation must not be treated as clinical advice.
@@ -68,6 +68,16 @@ cached at `~/.cache/scanexplain/`; it is not committed to the repository. Its
 current archive is approximately 214 MB. Official dataset license: CC BY 4.0.
 Attribution and dataset/source citations are included in the API response and
 mobile UI.
+
+The mobile Workspace starts with a separate, synthetic UI example with
+invented demo-only values. It is not connected to uploaded images, and
+contains no diagnosis. It must not be populated with real patient information
+in this demo.
+
+The Workspace preloads six training examples from the benchmark's
+`pneumonia` class. Generated sample IDs are for browsing only and do not
+represent patient names or patient identifiers. The class label is shown as a
+dataset annotation, not as a diagnosis or a finding produced by this app.
 
 The dataset is based on pediatric chest X-rays, downsampled to 224×224, and
 provides classification labels only—not segmentation masks. MedMNIST's

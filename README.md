@@ -1,15 +1,15 @@
-# ScanExplain — Expo Go research demo
+# MedScan — browser demo
 
-ScanExplain is a research prototype for examining medical-imaging model
+MedScan is an educational demo for exploring medical-imaging model
 behavior. It is **not for diagnosis, treatment decisions, emergency triage, or
 delaying care**. Outputs are not clinical advice.
 
-## Open it on Expo Go
+## Run the website in a browser
 
-You need Node.js/npm on the development computer and Expo Go on your iOS or
-Android phone. Both devices must be on a trusted local network.
+You need Python, Node.js, and npm installed on the development computer. This
+starts a local website; no QR code or Expo Go is needed.
 
-1. Start the Python API from the repository root:
+1. In the repository root, start the Python API:
 
    ```sh
    python3 -m venv .venv
@@ -18,50 +18,41 @@ Android phone. Both devices must be on a trusted local network.
    python -m scanexplain
    ```
 
-   The API listens on port `8000` on the local network so the phone can reach
-   it. Do not expose it to a public network.
+   The API listens on port `8000`.
 
-2. Find your computer's LAN IP address. On many Macs this is
-   `ipconfig getifaddr en0`; otherwise find the Wi-Fi IPv4 address in Network
-   settings.
-
-3. Configure the Expo app:
+2. In another terminal, start the website:
 
    ```sh
    cd mobile
-   cp .env.example .env
-   ```
-
-   Edit `.env` and replace `192.168.1.10` with the computer's LAN IP.
-
-4. Start Expo and scan its QR code with Expo Go:
-
-   ```sh
-   npm install
-   npx expo start
-   ```
-
-The repo targets Expo SDK 57. The app has image upload, API connection status,
-prediction/explanation/segmentation placeholders, dataset samples, a failure
-gallery, and a limitations view. Model components and test-set reports are
-injected through the Python API and are clearly marked unavailable until
-connected.
-
-## Open it in a web browser instead
-
-The Expo client also supports web, which avoids Expo Go and QR scanning:
-
-1. Start the Python API in one terminal using the instructions above.
-2. In a second terminal:
-
-   ```sh
-   cd /Users/seven/Documents/GitHub/MEDscan/mobile
    npm install
    npx expo start --web
    ```
 
-3. Open the local URL Expo prints (usually `http://localhost:8081`) in your
-   computer's browser.
+3. Open the local browser URL Expo prints (usually
+   `http://localhost:8081`). Use the browser URL only; no QR scan is required.
+
+The repo targets Expo SDK 57. The landing Workspace starts with a selectable
+benchmark image. The **Demo Cases** tab lets you search/select by six fictional names. Each name
+is assigned one independent public benchmark image for demonstration; the
+names are not patients and the images are not their scans. The Report tab shows model
+output when a model is connected. Failures and Limitations remain separate
+tabs. The app does not generate diagnoses or symptom-based differentials.
+Heatmap intensity means model attribution only; it does not mean disease
+location or severity. Model components and test-set reports are injected
+through the Python API and are clearly marked unavailable until connected.
+
+The Workspace preloads six PneumoniaMNIST training images, balanced between
+the benchmark labels `normal` and `pneumonia`. Each is a pediatric chest X-ray,
+not CT or MRI; each label is a dataset annotation, not a diagnosis.
+
+If benchmark samples do not appear, the app shows the API URL and error. Check
+that `EXPO_PUBLIC_API_URL` in `mobile/.env` is `http://127.0.0.1:8000` for a
+browser running on the same computer. Restart the Python API after updating
+project files, then tap **Retry loading demo cases**. The API serves each scan
+image from its own PNG endpoint.
+On first use, the API downloads and checksum-verifies an
+approximately 214 MB dataset archive; keep that server terminal running and
+allow the download to finish.
 
 The default browser API address is `http://127.0.0.1:8000`. The API allows
 browser requests from `localhost:8081` and `127.0.0.1:8081`. If Expo prints a
@@ -72,12 +63,9 @@ starting the Python API, for example:
 SCANEXPLAIN_CORS_ORIGINS=http://localhost:8081,http://127.0.0.1:8081 python -m scanexplain
 ```
 
-Use LAN mode only if you want to open it on another device; the Expo Go and
-browser setup still needs the Python API reachable from that device.
+## Demo sample dataset
 
-## Research dataset
-
-The Samples view downloads official PneumoniaMNIST MedMNIST+ 224×224 data on
+The Workspace downloads official PneumoniaMNIST MedMNIST+ 224×224 data on
 request to `~/.cache/scanexplain/` on the Python server. Its 214 MB archive is
 verified against the official MedMNIST v3 MD5 checksum. It is not copied into
 the repository. License: CC BY 4.0; attribution is included in the app.

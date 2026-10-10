@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
@@ -18,38 +19,119 @@ const API_URL = (process.env.EXPO_PUBLIC_API_URL || "http://127.0.0.1:8000").rep
   "",
 );
 const NOTICE =
-  "Research prototype only — not for diagnosis, treatment decisions, or emergencies.";
+  "Demo only — not for diagnosis, treatment decisions, or emergencies.";
 const TABS = [
-  ["review", "Review"],
-  ["samples", "Samples"],
+  ["review", "Workspace"],
+  ["cases", "Demo Cases"],
+  ["report", "Report"],
   ["failures", "Failures"],
   ["about", "Limitations"],
+];
+const DEMO_CASE_NAMES = [
+  "Avery Chen",
+  "Jordan Rivera",
+  "Taylor Morgan",
+  "Riley Patel",
+  "Casey Brooks",
+  "Quinn Parker",
 ];
 
 export default function App() {
   const [tab, setTab] = useState("review");
-  const [serverStatus, setServerStatus] = useState("Checking research API…");
+  const [serverStatus, setServerStatus] = useState("Connecting to demo service…");
   const [image, setImage] = useState(null);
   const [result, setResult] = useState(null);
   const [examples, setExamples] = useState([]);
+  const [selectedExample, setSelectedExample] = useState(0);
+  const [caseSearch, setCaseSearch] = useState("");
+  const [examplesError, setExamplesError] = useState("");
   const [failures, setFailures] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [wideLayout, setWideLayout] = useState(false);
 
   useEffect(() => {
+    if (Platform.OS !== "web") return undefined;
+    const updateLayout = () => setWideLayout(window.innerWidth >= 900);
+    updateLayout();
+    window.addEventListener("resize", updateLayout);
+    return () => window.removeEventListener("resize", updateLayout);
+  }, []);
+
+  useEffect(() => {
+    loadExamples();
     fetch(`${API_URL}/api/health`)
       .then(readJson)
-      .then((health) =>
+      .then((health) => {
+        if (health.purpose !== "demo") {
+          setServerStatus("API is outdated · restart the Python server from this project");
+          return;
+        }
         setServerStatus(
-          `API connected · ${Object.values(health.features || {}).filter(Boolean).length} model components configured`,
-        ),
-      )
+          `Demo API connected · ${Object.values(health.features || {}).filter(Boolean).length} model components configured`,
+        );
+      })
       .catch(() => setServerStatus("API unavailable · start the Python server on this network"));
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return undefined;
+
+    function handleDragOver(event) {
+      if (!event.dataTransfer?.types?.includes("Files")) return;
+      event.preventDefault();
+      setIsDragging(true);
+    }
+
+    function handleDragLeave(event) {
+      if (!event.relatedTarget) setIsDragging(false);
+    }
+
+    function handleDrop(event) {
+      if (!event.dataTransfer?.files?.length) return;
+      event.preventDefault();
+      setIsDragging(false);
+      const file = event.dataTransfer.files[0];
+      if (!file.type.startsWith("image/")) {
+        setError("Choose an image file to preview and analyze.");
+        return;
+      }
+      setImage({
+        uri: URL.createObjectURL(file),
+        fileName: file.name,
+        mimeType: file.type,
+        webFile: file,
+      });
+      setResult(null);
+      setError("");
+      setTab("review");
+    }
+
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("dragleave", handleDragLeave);
+    window.addEventListener("drop", handleDrop);
+    return () => {
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("dragleave", handleDragLeave);
+      window.removeEventListener("drop", handleDrop);
+    };
   }, []);
 
   async function chooseImage() {
     try {
       setError("");
+      if (Platform.OS === "web") {
+        const selection = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          quality: 1,
+          allowsEditing: false,
+        });
+        if (selection.canceled || !selection.assets?.length) return;
+        setImage(selection.assets[0]);
+        setResult(null);
+        return;
+      }
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         setError("Photo-library permission is needed to select a sample image.");
@@ -69,22 +151,34 @@ export default function App() {
   }
 
   async function analyzeImage() {
-    if (!image) {
-      setError("Choose an image before requesting analysis.");
+    if (!image && !examples[selectedExample]) {
+      setError("Wait for a benchmark image to load or upload an image.");
       return;
     }
     setBusy(true);
     setError("");
     setResult(null);
     try {
+      if (!image && examples[selectedExample]) {
+        const sampleId = examples[selectedExample].sample_id;
+        const response = await fetch(`${API_URL}/api/analyze-sample/${sampleId}`, {
+          method: "POST",
+        });
+        setResult(await readJson(response));
+        return;
+      }
       const body = new FormData();
-      const filename = image.fileName || "research-sample.jpg";
+      const filename = image.fileName || "medscan-demo-sample.jpg";
       if (Platform.OS === "web") {
-        const response = await fetch(image.uri);
-        if (!response.ok) {
-          throw new Error("Could not read the selected image from the browser.");
+        if (image.webFile) {
+          body.append("file", image.webFile, filename);
+        } else {
+          const response = await fetch(image.uri);
+          if (!response.ok) {
+            throw new Error("Could not read the selected image from the browser.");
+          }
+          body.append("file", await response.blob(), filename);
         }
-        body.append("file", await response.blob(), filename);
       } else {
         body.append("file", {
           uri: image.uri,
@@ -106,13 +200,23 @@ export default function App() {
 
   async function loadExamples() {
     setBusy(true);
+    setExamplesError("");
     setError("");
     try {
-      const response = await fetch(`${API_URL}/api/samples?limit=8`);
+      const response = await fetch(`${API_URL}/api/samples?limit=6&label=all`);
       const payload = await readJson(response);
+      if (
+        !Array.isArray(payload.examples) ||
+        payload.examples.some((example) => !example.sample_id || !example.image_url)
+      ) {
+        throw new Error("The Python API is outdated. Restart it from the latest project files.");
+      }
       setExamples(payload.examples || []);
+      setSelectedExample(0);
     } catch (requestError) {
-      setError(requestError.message);
+      setExamplesError(
+        `Could not load benchmark samples from ${API_URL}/api/samples. ${requestError.message} Check that the Python API is running and EXPO_PUBLIC_API_URL points to the computer running it. The first download may take a few minutes.`,
+      );
     } finally {
       setBusy(false);
     }
@@ -133,7 +237,6 @@ export default function App() {
   function changeTab(nextTab) {
     setTab(nextTab);
     setError("");
-    if (nextTab === "samples" && examples.length === 0) loadExamples();
     if (nextTab === "failures" && failures === null) loadFailures();
   }
 
@@ -141,9 +244,13 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>MEDICAL AI · RESEARCH DEMO</Text>
-        <Text style={styles.title}>ScanExplain</Text>
-        <Text style={styles.subtitle}>Explore model behavior, not clinical answers.</Text>
+        <View>
+          <Text style={styles.eyebrow}>IMAGING DEMO WORKSPACE</Text>
+          <Text style={styles.title}>MedScan</Text>
+        </View>
+        <View style={styles.headerBadge}>
+          <Text style={styles.headerBadgeText}>DEMO ONLY</Text>
+        </View>
       </View>
 
       <View style={styles.notice}>
@@ -151,149 +258,462 @@ export default function App() {
       </View>
       <Text style={styles.connection}>{serverStatus}</Text>
 
-      <View style={styles.tabRow}>
-        {TABS.map(([id, label]) => (
-          <Pressable
-            accessibilityRole="tab"
-            accessibilityState={{ selected: tab === id }}
-            key={id}
-            onPress={() => changeTab(id)}
-            style={[styles.tab, tab === id && styles.activeTab]}
-          >
-            <Text style={[styles.tabText, tab === id && styles.activeTabText]}>{label}</Text>
-          </Pressable>
-        ))}
+      {isDragging ? (
+        <View pointerEvents="none" style={styles.dropBanner}>
+          <Text style={styles.dropBannerText}>Drop the scan image to add it to this demo</Text>
+        </View>
+      ) : null}
+
+      <View style={[styles.mainLayout, wideLayout && styles.wideMainLayout]}>
+        <ScrollView
+          style={wideLayout ? styles.sideNavigation : undefined}
+          horizontal={!wideLayout}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.tabRow, wideLayout && styles.sideTabRow]}
+        >
+          {TABS.map(([id, label]) => (
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === id }}
+              key={id}
+              onPress={() => changeTab(id)}
+              style={[styles.tab, tab === id && styles.activeTab]}
+            >
+              <Text style={[styles.tabText, tab === id && styles.activeTabText]}>{label}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        <ScrollView style={styles.mainContent} contentContainerStyle={styles.content}>
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {busy ? <ActivityIndicator color="#087e8b" style={styles.spinner} /> : null}
+
+          {tab === "review" ? (
+            <WorkspacePanel
+              image={image}
+              result={result}
+              examples={examples}
+              selectedIndex={selectedExample}
+              samplesError={examplesError}
+              busy={busy}
+              onSelectSample={(index) => {
+                setSelectedExample(index);
+                setImage(null);
+                setResult(null);
+              }}
+              onChoose={chooseImage}
+              onAnalyze={analyzeImage}
+              onReload={loadExamples}
+            />
+          ) : null}
+          {tab === "cases" ? (
+            <DemoCasesPanel
+              examples={examples}
+              search={caseSearch}
+              selectedIndex={selectedExample}
+              onSearch={setCaseSearch}
+              onSelect={(index) => {
+                setSelectedExample(index);
+                setImage(null);
+                setResult(null);
+                setTab("review");
+                setError("");
+              }}
+              onReload={loadExamples}
+              samplesError={examplesError}
+            />
+          ) : null}
+          {tab === "report" ? (
+            <ReportPanel
+              result={result}
+              image={image}
+              selectedSample={examples[selectedExample]}
+            />
+          ) : null}
+          {tab === "failures" ? <FailuresPanel report={failures} /> : null}
+          {tab === "about" ? <LimitationsPanel /> : null}
+        </ScrollView>
       </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {busy ? <ActivityIndicator color="#087e8b" style={styles.spinner} /> : null}
-
-        {tab === "review" ? (
-          <ReviewPanel
-            image={image}
-            result={result}
-            onChoose={chooseImage}
-            onAnalyze={analyzeImage}
-          />
-        ) : null}
-        {tab === "samples" ? (
-          <SamplesPanel examples={examples} onReload={loadExamples} />
-        ) : null}
-        {tab === "failures" ? <FailuresPanel report={failures} /> : null}
-        {tab === "about" ? <LimitationsPanel /> : null}
-      </ScrollView>
     </SafeAreaView>
   );
 }
 
-function ReviewPanel({ image, result, onChoose, onAnalyze }) {
+function WorkspacePanel({
+  image,
+  result,
+  examples,
+  selectedIndex,
+  samplesError,
+  onSelectSample,
+  onChoose,
+  onAnalyze,
+  onReload,
+}) {
+  const selectedSample = examples[selectedIndex];
+  const [previewError, setPreviewError] = useState(false);
+  const activeImage = image
+    ? { uri: image.uri }
+    : selectedSample
+      ? { uri: `${API_URL}${selectedSample.image_url}` }
+      : null;
+  useEffect(() => setPreviewError(false), [activeImage?.uri]);
+
   return (
     <View>
-      <Text style={styles.sectionTitle}>Review a sample image</Text>
+      <Text style={styles.sectionTitle}>Case workspace</Text>
       <Text style={styles.body}>
-        Select a supported research sample. The current backend is stub-first and will say
-        plainly when a model component is not connected. Uploads must be JPEG, PNG, or WebP,
-        no larger than 12 MB or 4096 pixels per side.
+        Start with the fictional demo record and a benchmark image, or select an image from your
+        device. The record is not associated with any benchmark sample.
       </Text>
-      <Pressable onPress={onChoose} style={styles.secondaryButton}>
-        <Text style={styles.secondaryButtonText}>Choose image</Text>
-      </Pressable>
-      {image ? (
-        <Image source={{ uri: image.uri }} style={styles.preview} resizeMode="contain" />
-      ) : (
-        <View style={styles.emptyImage}>
-          <Text style={styles.muted}>No image selected</Text>
+      <Text style={styles.muted}>
+        On a computer, drag an image anywhere onto this page, or use Upload to choose a file.
+      </Text>
+
+      <View style={styles.workspaceGrid}>
+        <View style={styles.recordCard}>
+          <View style={styles.recordHeader}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {DEMO_CASE_NAMES[selectedIndex]?.[0] || "D"}
+              </Text>
+            </View>
+            <View style={styles.recordHeading}>
+              <Text style={styles.chartName}>
+                {image ? "Uploaded image" : DEMO_CASE_NAMES[selectedIndex] || "Demo case"}
+              </Text>
+              <Text style={styles.recordSubtitle}>Fictional demo name · no patient record</Text>
+            </View>
+            <Text style={styles.recordStatus}>SIMULATED</Text>
+          </View>
+          <View style={styles.recordDetails}>
+            <ChartField label="Benchmark sample" value={selectedSample?.sample_id || "Not selected"} />
+            <ChartField
+              label="Dataset reference label"
+              value={selectedSample?.label || "Unavailable"}
+            />
+            <ChartField label="Diagnosis" value="Not provided by this demo" />
+          </View>
+          <Text style={styles.syntheticNote}>
+            Fictional name only. The public benchmark image is not this person's scan and is not
+            linked to this name.
+          </Text>
         </View>
-      )}
-      <Pressable
-        accessibilityRole="button"
-        onPress={onAnalyze}
-        style={[styles.primaryButton, !image && styles.disabledButton]}
-      >
-        <Text style={styles.primaryButtonText}>Analyze research sample</Text>
-      </Pressable>
-      {result ? <AnalysisResult result={result} /> : null}
+
+        <View style={styles.imageWorkspace}>
+          <View style={styles.imageHeader}>
+            <View>
+              <Text style={styles.cardTitle}>Imaging sample</Text>
+              <Text style={styles.recordSubtitle}>
+                {image
+                  ? image.fileName || "Uploaded image"
+                  : selectedSample?.sample_id || "Loading benchmark samples…"}
+              </Text>
+            </View>
+            <Pressable onPress={onChoose} style={styles.uploadButton}>
+              <Text style={styles.uploadButtonText}>＋ Upload</Text>
+            </Pressable>
+          </View>
+
+          {activeImage && !previewError ? (
+            <Image
+              source={activeImage}
+              style={styles.workspaceImage}
+              resizeMode="contain"
+              accessibilityLabel="Selected public benchmark or uploaded image"
+              onError={() => setPreviewError(true)}
+            />
+          ) : (
+            <View style={[styles.workspaceImage, styles.emptyImage]}>
+              <Text style={styles.muted}>
+                {previewError
+                  ? "Could not load the image. Check that the Python API is reachable, then reload demo cases."
+                  : "Benchmark image is not available yet."}
+              </Text>
+            </View>
+          )}
+
+          <Text style={styles.imageSourceNote}>
+            {image
+              ? "User-selected image · not associated with any demo name"
+              : "Public pediatric chest X-ray benchmark · not the scan of the fictional name above"}
+          </Text>
+
+          {!examples.length ? (
+            <View>
+              <Text style={styles.muted}>
+                Six benchmark images load from the Python API on startup.
+              </Text>
+              {samplesError ? <Text style={styles.error}>{samplesError}</Text> : null}
+              <Pressable onPress={onReload} style={styles.secondaryButton}>
+                <Text style={styles.secondaryButtonText}>Retry loading samples</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <Text style={styles.datasetLabel}>
+            {image
+              ? "Uploaded demo image"
+              : selectedSample?.label || "Benchmark label unavailable"}
+          </Text>
+          <Text style={styles.muted}>
+            Benchmark labels are dataset annotations, not diagnoses. Images are not linked to
+            names or patient information.
+          </Text>
+
+          <Pressable
+            accessibilityRole="button"
+            onPress={onAnalyze}
+            style={styles.primaryButton}
+          >
+            <Text style={styles.primaryButtonText}>Run demo analysis</Text>
+          </Pressable>
+          {result ? <PredictionSummary result={result} /> : null}
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Model attribution intensity</Text>
+        <Text style={styles.body}>
+          Highlighted regions represent influence assigned by a connected explanation method.
+          They do not show disease location or severity.
+        </Text>
+        {result?.explanation_overlay ? (
+          <>
+            <Image
+              source={{ uri: result.explanation_overlay }}
+              style={styles.overlay}
+              resizeMode="contain"
+              accessibilityLabel="Model attribution heatmap overlay"
+            />
+            <View style={styles.intensityLegend}>
+              <Text style={styles.muted}>Lower attribution</Text>
+              <View style={styles.legendGradient} />
+              <Text style={styles.muted}>Higher attribution</Text>
+            </View>
+          </>
+        ) : (
+          <View style={styles.emptyOverlay}>
+            <Text style={styles.muted}>
+              {result
+                ? "Attribution overlay is unavailable until an explanation model is connected."
+                : "Run demo analysis to check whether an attribution overlay is available."}
+            </Text>
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
-function AnalysisResult({ result }) {
+function DemoCasesPanel({
+  examples,
+  search,
+  selectedIndex,
+  onSearch,
+  onSelect,
+  onReload,
+  samplesError,
+}) {
+  const matchingCases = DEMO_CASE_NAMES
+    .map((name, index) => ({ name, index, sample: examples[index] }))
+    .filter(({ name, sample }) => sample && name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <View>
+      <Text style={styles.sectionTitle}>Search demo cases</Text>
+      <Text style={styles.body}>
+        Search and select by fictional name. Each name has one public benchmark image assigned
+        for this demonstration.
+      </Text>
+      <View style={styles.syntheticNotice}>
+        <Text style={styles.syntheticNoticeTitle}>SIMULATION ONLY</Text>
+        <Text style={styles.syntheticNoticeText}>
+          Names are fictional. Each selection shows an unrelated public benchmark
+          image—not that person's scan. Dataset labels are not diagnoses.
+        </Text>
+      </View>
+      <TextInput
+        accessibilityLabel="Search fictional demo names"
+        placeholder="Search fictional name"
+        placeholderTextColor="#647887"
+        value={search}
+        onChangeText={onSearch}
+        style={styles.searchInput}
+      />
+      {matchingCases.map(({ name, index }) => (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={name}
+          accessibilityState={{ selected: selectedIndex === index }}
+          key={name}
+          onPress={() => onSelect(index)}
+          style={[styles.demoCaseRow, selectedIndex === index && styles.selectedDemoCase]}
+        >
+          <View style={styles.demoCaseHeading}>
+            <Text style={styles.chartName}>{name}</Text>
+            <Text style={styles.recordStatus}>FICTIONAL</Text>
+          </View>
+          <Text style={styles.recordSubtitle}>Demo-only name · one benchmark image assigned</Text>
+        </Pressable>
+      ))}
+      {!matchingCases.length ? (
+        <Text style={styles.muted}>
+          {examples.length ? "No fictional demo names match that search." : "Loading demo cases…"}
+        </Text>
+      ) : null}
+      {samplesError ? <Text style={styles.error}>{samplesError}</Text> : null}
+      {!examples.length ? (
+        <Pressable onPress={onReload} style={styles.secondaryButton}>
+          <Text style={styles.secondaryButtonText}>Retry loading demo cases</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function PredictionSummary({ result }) {
   const prediction = result.prediction;
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, prediction ? styles.predictionCard : styles.unavailableCard]}>
       <Text style={styles.cardTitle}>
-        {prediction ? `Model label: ${prediction.label}` : "No model prediction"}
+        {prediction ? `Model output: ${prediction.label}` : "Prediction unavailable"}
       </Text>
       {prediction ? (
-        <>
-          <Text style={styles.body}>
-            Top-class confidence: {(result.confidence * 100).toFixed(1)}%
-          </Text>
-          <Text style={styles.body}>
-            Class probabilities: {JSON.stringify(prediction.probs)}
-          </Text>
-        </>
+        <Text style={styles.body}>
+          Top-class confidence: {(result.confidence * 100).toFixed(1)}%
+        </Text>
       ) : (
-        <Text style={styles.body}>The classifier is not connected; no prediction was made.</Text>
+        <Text style={styles.body}>No classifier is connected; no prediction was made.</Text>
       )}
-      <Text style={styles.cardTitle}>Upload screening</Text>
-      <Text style={styles.body}>
-        {result.screening?.status || "Unavailable until a prediction is produced"}
-      </Text>
-      {result.screening?.reasons?.length ? (
-        <Text style={styles.body}>Notes: {result.screening.reasons.join(", ")}</Text>
-      ) : null}
-      <OverlayResult title="Explanation overlay" uri={result.explanation_overlay} />
-      <OverlayResult title="Segmentation overlay" uri={result.segmentation_overlay} />
-      {result.comparison ? (
-        <View>
-          <Text style={styles.cardTitle}>Labeled training example</Text>
-          <Text style={styles.body}>{result.comparison.label}</Text>
-          <Image source={{ uri: result.comparison.image }} style={styles.overlay} resizeMode="contain" />
-        </View>
-      ) : (
-        <Text style={styles.muted}>Labeled-example comparison is not connected.</Text>
-      )}
-    </View>
-  );
-}
-
-function OverlayResult({ title, uri }) {
-  return (
-    <View>
-      <Text style={styles.cardTitle}>{title}</Text>
-      {uri ? (
-        <Image source={{ uri }} style={styles.overlay} resizeMode="contain" />
-      ) : (
-        <Text style={styles.muted}>Not available — no component is connected.</Text>
-      )}
-    </View>
-  );
-}
-
-function SamplesPanel({ examples, onReload }) {
-  return (
-    <View>
-      <Text style={styles.sectionTitle}>PneumoniaMNIST benchmark</Text>
-      <Text style={styles.body}>
-        224×224 downsampled pediatric chest X-ray classification samples. Training split only;
-        no segmentation masks. Not intended for clinical use. First load downloads the official
-        CC BY 4.0 dataset to the Python server cache.
-      </Text>
-      <Pressable onPress={onReload} style={styles.secondaryButton}>
-        <Text style={styles.secondaryButtonText}>Load sample images</Text>
-      </Pressable>
-      {examples.map((example, index) => (
-        <View key={`${index}-${example.label}`} style={styles.sampleCard}>
-          <Image source={{ uri: example.image }} style={styles.sampleImage} resizeMode="contain" />
-          <Text style={styles.body}>{example.label}</Text>
-        </View>
-      ))}
       <Text style={styles.muted}>
-        Samples show dataset labels, not model outputs. See medmnist.com and Zenodo record
-        10519652 for attribution.
+        {result.screening?.status
+          ? `Upload screening: ${result.screening.status}`
+          : "Upload screening unavailable without a model prediction."}
       </Text>
+    </View>
+  );
+}
+
+function ReportPanel({ result, image, selectedSample }) {
+  if (!result) {
+    return (
+      <View>
+        <Text style={styles.sectionTitle}>Analysis report</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>No analysis yet</Text>
+          <Text style={styles.body}>
+            Select a benchmark or uploaded image in the Workspace and run the demo analysis.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const prediction = result.prediction;
+  return (
+    <View>
+      <Text style={styles.sectionTitle}>Analysis report</Text>
+      <Text style={styles.body}>
+        {image?.fileName
+          ? `Image: ${image.fileName}`
+          : result.sample?.sample_id || selectedSample?.sample_id || "Research image"}
+      </Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Prediction</Text>
+        {prediction ? (
+          <>
+            <Text style={styles.reportLabel}>{prediction.label}</Text>
+            <Text style={styles.body}>
+              Top-class confidence: {(result.confidence * 100).toFixed(1)}%
+            </Text>
+            <Text style={styles.muted}>
+              Confidence is a model score, not the probability of a medical condition.
+            </Text>
+            <Text style={styles.cardTitle}>Class probabilities</Text>
+            {Object.entries(prediction.probs).map(([label, probability]) => (
+              <ProbabilityBar key={label} label={label} probability={probability} />
+            ))}
+          </>
+        ) : (
+          <Text style={styles.body}>
+            No classifier is connected. The absence of a prediction is not a normal or negative
+            result.
+          </Text>
+        )}
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Upload screening</Text>
+        <Text style={styles.body}>{result.screening?.status || "Unavailable"}</Text>
+        {result.screening?.reasons?.length ? (
+          <Text style={styles.body}>Notes: {result.screening.reasons.join(", ")}</Text>
+        ) : null}
+        <Text style={styles.muted}>
+          Screening heuristics cannot establish that an image is supported or safe to assess.
+        </Text>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Model explanation</Text>
+        {result.explanation_overlay ? (
+          <>
+            <Image
+              source={{ uri: result.explanation_overlay }}
+              style={styles.overlay}
+              resizeMode="contain"
+            />
+            <Text style={styles.muted}>
+              Attribution intensity reflects model influence only—not disease location or severity.
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.muted}>No explanation overlay was returned.</Text>
+        )}
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Segmentation</Text>
+        {result.segmentation_overlay ? (
+          <Image source={{ uri: result.segmentation_overlay }} style={styles.overlay} resizeMode="contain" />
+        ) : (
+          <Text style={styles.muted}>No segmentation overlay was returned.</Text>
+        )}
+        <Text style={styles.muted}>Segmentation output is not a clinical measurement.</Text>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Labeled-example comparison</Text>
+        {result.comparison ? (
+          <>
+            <Text style={styles.body}>{result.comparison.label}</Text>
+            <Image source={{ uri: result.comparison.image }} style={styles.overlay} resizeMode="contain" />
+          </>
+        ) : (
+          <Text style={styles.muted}>No labeled example comparison was returned.</Text>
+        )}
+      </View>
+      <Text style={styles.reportNotice}>{NOTICE}</Text>
+    </View>
+  );
+}
+
+function ProbabilityBar({ label, probability }) {
+  const percent = Math.max(0, Math.min(1, probability)) * 100;
+  return (
+    <View style={styles.probabilityRow}>
+      <View style={styles.probabilityLabels}>
+        <Text style={styles.body}>{label}</Text>
+        <Text style={styles.body}>{percent.toFixed(1)}%</Text>
+      </View>
+      <View style={styles.probabilityTrack}>
+        <View style={[styles.probabilityFill, { width: `${percent}%` }]} />
+      </View>
+    </View>
+  );
+}
+
+function ChartField({ label, value }) {
+  return (
+    <View style={styles.chartField}>
+      <Text style={styles.chartFieldLabel}>{label}</Text>
+      <Text style={styles.chartFieldValue}>{value}</Text>
     </View>
   );
 }
@@ -343,13 +763,15 @@ function LimitationsPanel() {
       <Text style={styles.noticeText}>{NOTICE}</Text>
       <View style={styles.card}>
         <Text style={styles.body}>
-          • This is an educational research prototype, not a medical device.{"\n"}
+          • This is an educational demonstration, not a medical device.{"\n"}
           • Do not use it for diagnosis, emergency triage, treatment decisions, or to delay care.
           {"\n"}
           • Confidence can be miscalibrated; a high score does not establish correctness.{"\n"}
           • Explanations are not causal evidence; segmentations are not clinical measurements.
           {"\n"}
           • PneumoniaMNIST is small, pediatric, downsampled, and explicitly not for clinical use.
+          {"\n"}
+          • The synthetic demo record is not linked to uploaded images.
           {"\n"}
           • Dataset, labeling, preprocessing, and population shifts can change model behavior.
         </Text>
@@ -367,59 +789,304 @@ async function readJson(response) {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#f3f7f8" },
-  header: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 12 },
-  eyebrow: { color: "#087e8b", fontSize: 11, fontWeight: "700", letterSpacing: 1.2 },
-  title: { color: "#102a43", fontSize: 30, fontWeight: "800", marginTop: 4 },
-  subtitle: { color: "#526777", fontSize: 14, marginTop: 3 },
-  notice: { backgroundColor: "#fff2d8", marginHorizontal: 16, padding: 12, borderRadius: 10 },
-  noticeText: { color: "#815b0b", fontSize: 13, fontWeight: "700", lineHeight: 19 },
-  connection: { color: "#587080", fontSize: 12, marginHorizontal: 20, marginTop: 9 },
+  safeArea: { flex: 1, backgroundColor: "#eaf4fc" },
+  header: {
+    backgroundColor: "#d9edfb",
+    borderBottomColor: "#c4dff2",
+    borderBottomWidth: 1,
+    paddingHorizontal: 24,
+    paddingTop: 18,
+    paddingBottom: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  eyebrow: { color: "#31566f", fontSize: 11, fontWeight: "700", letterSpacing: 1.35 },
+  title: { color: "#111820", fontSize: 30, fontWeight: "800", marginTop: 4 },
+  headerBadge: {
+    backgroundColor: "#ffffff",
+    borderColor: "#b9d7ed",
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 18,
+  },
+  headerBadgeText: { color: "#31566f", fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
+  notice: {
+    backgroundColor: "#fff7e4",
+    borderColor: "#eed99b",
+    borderWidth: 1,
+    marginHorizontal: 20,
+    marginTop: 14,
+    padding: 11,
+    borderRadius: 9,
+  },
+  noticeText: { color: "#57400a", fontSize: 12, fontWeight: "700", lineHeight: 18 },
+  connection: { color: "#485b69", fontSize: 12, marginHorizontal: 24, marginTop: 9 },
   tabRow: { flexDirection: "row", gap: 7, paddingHorizontal: 14, paddingVertical: 12 },
-  tab: { paddingVertical: 8, paddingHorizontal: 11, borderRadius: 20, backgroundColor: "#e3ebee" },
-  activeTab: { backgroundColor: "#087e8b" },
-  tabText: { color: "#35515f", fontSize: 13, fontWeight: "600" },
-  activeTabText: { color: "#ffffff" },
-  content: { paddingHorizontal: 16, paddingBottom: 36 },
-  sectionTitle: { color: "#102a43", fontSize: 22, fontWeight: "800", marginBottom: 8 },
-  body: { color: "#344e5c", fontSize: 14, lineHeight: 21, marginBottom: 8 },
-  muted: { color: "#728591", fontSize: 13, lineHeight: 19, marginVertical: 5 },
+  mainLayout: { flex: 1, flexDirection: "column" },
+  wideMainLayout: { flexDirection: "row" },
+  mainContent: { flex: 1, width: "100%" },
+  sideNavigation: {
+    width: 184,
+    flexGrow: 0,
+    borderRightWidth: 1,
+    borderRightColor: "#c9dfef",
+  },
+  sideTabRow: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    width: 184,
+    paddingHorizontal: 12,
+    paddingTop: 18,
+  },
+  dropBanner: {
+    position: "absolute",
+    zIndex: 20,
+    top: 18,
+    left: 18,
+    right: 18,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: "#326f98",
+    backgroundColor: "#eaf4fc",
+    borderRadius: 12,
+    padding: 18,
+    alignItems: "center",
+  },
+  dropBannerText: { color: "#234d68", fontWeight: "800", fontSize: 15 },
+  tab: {
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: "#dcecf8",
+    borderWidth: 1,
+    borderColor: "#c9dfef",
+  },
+  activeTab: { backgroundColor: "#ffffff", borderColor: "#76a9cd" },
+  tabText: { color: "#354755", fontSize: 13, fontWeight: "600" },
+  activeTabText: { color: "#17232b" },
+  content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 40, maxWidth: 1320, width: "100%", alignSelf: "center" },
+  sectionTitle: { color: "#111820", fontSize: 23, fontWeight: "800", marginBottom: 8 },
+  body: { color: "#202b33", fontSize: 14, lineHeight: 21, marginBottom: 8 },
+  muted: { color: "#566875", fontSize: 13, lineHeight: 19, marginVertical: 5 },
   error: { color: "#9f2d2d", backgroundColor: "#fde8e7", padding: 12, borderRadius: 8 },
+  errorCard: { backgroundColor: "#fff1f0", borderRadius: 10, padding: 10, marginVertical: 8 },
   spinner: { marginVertical: 12 },
   secondaryButton: {
-    borderColor: "#087e8b",
+    borderColor: "#6e9fbe",
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 12,
     alignItems: "center",
     marginVertical: 8,
+    backgroundColor: "#f5faff",
   },
-  secondaryButtonText: { color: "#087e8b", fontWeight: "700" },
+  secondaryButtonText: { color: "#234d68", fontWeight: "700" },
   primaryButton: {
-    backgroundColor: "#087e8b",
-    borderRadius: 10,
+    backgroundColor: "#326f98",
+    borderRadius: 8,
     padding: 14,
     alignItems: "center",
     marginVertical: 10,
   },
   disabledButton: { opacity: 0.55 },
-  primaryButtonText: { color: "#ffffff", fontWeight: "700" },
-  preview: { width: "100%", height: 260, backgroundColor: "#e8eff2", borderRadius: 12 },
+  primaryButtonText: { color: "#ffffff", fontWeight: "700", fontSize: 14 },
+  preview: { width: "100%", height: 260, backgroundColor: "#e3f0fa", borderRadius: 8 },
   emptyImage: {
     height: 160,
-    backgroundColor: "#e8eff2",
+    backgroundColor: "#e3f0fa",
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
-  card: { backgroundColor: "#ffffff", padding: 14, borderRadius: 12, marginTop: 12 },
-  cardTitle: { color: "#102a43", fontSize: 16, fontWeight: "700", marginTop: 8, marginBottom: 5 },
-  overlay: { width: "100%", height: 220, backgroundColor: "#e8eff2", marginVertical: 8 },
+  card: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d1e2ee",
+    borderWidth: 1,
+    padding: 16,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  workspaceGrid: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-start", gap: 14 },
+  recordCard: {
+    flexGrow: 1,
+    flexBasis: 270,
+    backgroundColor: "#ffffff",
+    borderColor: "#d1e2ee",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 16,
+    marginTop: 12,
+  },
+  imageWorkspace: {
+    flexGrow: 2,
+    flexBasis: 440,
+    backgroundColor: "#ffffff",
+    borderColor: "#d1e2ee",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 16,
+    marginTop: 12,
+  },
+  recordHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#dceefa",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#284d67", fontSize: 17, fontWeight: "800" },
+  recordHeading: { flex: 1 },
+  recordSubtitle: { color: "#566875", fontSize: 12, lineHeight: 18 },
+  recordStatus: {
+    color: "#6b5210",
+    backgroundColor: "#fff2d5",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 5,
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  recordDetails: { marginTop: 12 },
+  syntheticNote: {
+    color: "#654d13",
+    backgroundColor: "#fff7e4",
+    borderRadius: 6,
+    padding: 9,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  imageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 8,
+  },
+  uploadButton: {
+    backgroundColor: "#eaf4fc",
+    borderColor: "#b9d7ed",
+    borderWidth: 1,
+    borderRadius: 7,
+    paddingVertical: 8,
+    paddingHorizontal: 11,
+  },
+  uploadButtonText: { color: "#234d68", fontWeight: "700", fontSize: 12 },
+  workspaceImage: {
+    width: "100%",
+    height: 340,
+    backgroundColor: "#edf5fb",
+    borderRadius: 8,
+  },
+  imageSourceNote: {
+    color: "#475d6b",
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 8,
+  },
+  datasetLabel: { color: "#151d24", fontSize: 14, fontWeight: "700", marginTop: 5 },
+  predictionCard: { borderLeftWidth: 4, borderLeftColor: "#568bae" },
+  unavailableCard: { borderLeftWidth: 4, borderLeftColor: "#bd8c35" },
+  cardTitle: { color: "#151d24", fontSize: 16, fontWeight: "700", marginTop: 8, marginBottom: 5 },
+  reportLabel: { color: "#234d68", fontSize: 25, fontWeight: "800", marginBottom: 6 },
+  reportNotice: {
+    color: "#815b0b",
+    backgroundColor: "#fff2d8",
+    fontWeight: "700",
+    lineHeight: 20,
+    padding: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  overlay: { width: "100%", height: 220, backgroundColor: "#edf5fb", marginVertical: 8 },
+  emptyOverlay: {
+    minHeight: 120,
+    padding: 16,
+    backgroundColor: "#edf5fb",
+    borderRadius: 10,
+    justifyContent: "center",
+  },
+  intensityLegend: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginTop: 4,
+  },
+  legendGradient: {
+    flex: 1,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#e9bd55",
+    borderWidth: 1,
+    borderColor: "#c98e42",
+  },
+  probabilityRow: { marginBottom: 8 },
+  probabilityLabels: { flexDirection: "row", justifyContent: "space-between" },
+  probabilityTrack: {
+    height: 9,
+    backgroundColor: "#dcecf8",
+    borderRadius: 5,
+    overflow: "hidden",
+  },
+  probabilityFill: { height: "100%", backgroundColor: "#568bae", borderRadius: 5 },
   sampleCard: {
     backgroundColor: "#ffffff",
     padding: 10,
     borderRadius: 10,
     marginVertical: 6,
   },
-  sampleImage: { width: "100%", height: 180, backgroundColor: "#e8eff2" },
+  syntheticNotice: {
+    backgroundColor: "#fff2d8",
+    borderColor: "#e3c87a",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    marginVertical: 8,
+  },
+  syntheticNoticeTitle: {
+    color: "#815b0b",
+    fontSize: 13,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  syntheticNoticeText: { color: "#684f1d", fontSize: 13, lineHeight: 19 },
+  searchInput: {
+    backgroundColor: "#ffffff",
+    borderColor: "#b9d7ed",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    color: "#17232b",
+    fontSize: 14,
+    marginVertical: 10,
+  },
+  demoCaseRow: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d1e2ee",
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 9,
+  },
+  selectedDemoCase: { borderColor: "#568bae", borderWidth: 2 },
+  demoCaseHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  chartName: { color: "#151d24", fontSize: 16, fontWeight: "800", marginBottom: 3 },
+  chartField: {
+    borderBottomColor: "#e7eef1",
+    borderBottomWidth: 1,
+    paddingVertical: 9,
+  },
+  chartFieldLabel: { color: "#566875", fontSize: 12, fontWeight: "600", marginBottom: 3 },
+  chartFieldValue: { color: "#17232b", fontSize: 14, lineHeight: 20 },
 });

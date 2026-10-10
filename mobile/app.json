@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ScanExplain Research",
+    "name": "MedScan",
     "slug": "scanexplain-research",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Choose a sample image for this non-clinical research demonstration.",
+          "photosPermission": "Choose a sample image for this non-clinical demo.",
           "cameraPermission": false,
           "microphonePermission": false
         }

@@ -4,7 +4,11 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from scanexplain.dataset import _ensure_dataset_file, load_pneumoniamnist_split
+from scanexplain.dataset import (
+    _ensure_dataset_file,
+    load_pneumoniamnist_sample,
+    load_pneumoniamnist_split,
+)
 
 
 class FakeResponse:
@@ -51,6 +55,36 @@ class DatasetTests(unittest.TestCase):
     def test_invalid_split_is_rejected_without_optional_dependencies(self):
         with self.assertRaisesRegex(ValueError, "split must be one of"):
             load_pneumoniamnist_split("validation")
+
+    def test_sample_ids_accept_normal_and_pneumonia_classes(self):
+        import numpy as np
+
+        with patch(
+            "scanexplain.dataset.load_pneumoniamnist_split",
+            return_value=type(
+                "Split",
+                (),
+                {
+                    "images": np.asarray([[[1]], [[2]], [[3]], [[4]]], dtype=np.uint8),
+                    "labels": np.asarray([0, 1, 0, 1]),
+                },
+            )(),
+        ):
+            from PIL import Image
+
+            normal_image, normal_label = load_pneumoniamnist_sample(
+                "PMN-TRAIN-NORMAL-0002"
+            )
+            pneumonia_image, pneumonia_label = load_pneumoniamnist_sample(
+                "PMN-TRAIN-PNEUMONIA-0002"
+            )
+
+        self.assertIsInstance(normal_image, Image.Image)
+        self.assertIsInstance(pneumonia_image, Image.Image)
+        self.assertIn("normal", normal_label)
+        self.assertIn("pneumonia", pneumonia_label)
+        self.assertIn("not a diagnosis", normal_label)
+        self.assertIn("not a diagnosis", pneumonia_label)
 
 
 if __name__ == "__main__":
